@@ -50,40 +50,33 @@ RUN chown -R coder:coder /opt/freshell
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-# Switch to non-root user for tool installations
-USER coder
-WORKDIR /home/coder
+# --- Install code providers as root ---
 
-# Configure npm global prefix in user home (avoids EACCES on /usr/local)
-RUN mkdir -p /home/coder/.npm-global \
-    && npm config set prefix /home/coder/.npm-global
-ENV NPM_CONFIG_PREFIX=/home/coder/.npm-global
-
-# --- Code providers ---
+# npm-based providers (install to /usr/local)
+RUN npm install -g @openai/codex \
+    && npm install -g @google/gemini-cli
 
 # Claude Code (native binary installer)
 RUN curl -fsSL https://claude.ai/install.sh | bash
 
-# OpenAI Codex CLI (npm)
-RUN npm install -g @openai/codex
-
 # OpenCode (native binary installer)
 RUN curl -fsSL https://opencode.ai/install | bash
 
-# Google Gemini CLI (npm)
-RUN npm install -g @google/gemini-cli
+# Kimi CLI (Python-based; official installer expects glibc, so use pip on Alpine)
+RUN apk add --no-cache py3-pip py3-setuptools \
+    && pip install --break-system-packages kimi-cli \
+    || echo "WARN: kimi-cli install failed — Kimi CLI will not be available"
 
-# Kimi CLI (official installer)
-RUN curl -L https://code.kimi.com/install.sh | bash
-
-# --- Defaults ---
+# --- Switch to non-root user for runtime ---
+USER coder
+WORKDIR /home/coder
 
 # Git defaults (overridable from persistent volume)
 RUN git config --global init.defaultBranch main \
     && git config --global pull.rebase false
 
-# Ensure all tool binaries are discoverable
-ENV PATH="/home/coder/.npm-global/bin:/home/coder/.local/bin:${PATH}"
+# Ensure native installer binaries are discoverable
+ENV PATH="/home/coder/.local/bin:${PATH}"
 
 # --- Freshell configuration (overridable at runtime) ---
 ENV PORT=3001
