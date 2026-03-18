@@ -42,6 +42,10 @@ RUN deluser --remove-home node \
     && addgroup -g 1000 coder \
     && adduser -D -u 1000 -G coder -s /bin/bash coder
 
+# Verify shell is set (Alpine adduser can silently ignore -s if shell doesn't exist)
+RUN grep coder /etc/passwd | grep -q /bin/bash \
+    || sed -i 's|coder:.*:/bin/.*|coder:x:1000:1000::/home/coder:/bin/bash|' /etc/passwd
+
 # Copy freshell from build stage
 COPY --from=build /opt/freshell /opt/freshell
 RUN chown -R coder:coder /opt/freshell
@@ -54,18 +58,15 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # npm-based providers (install to /usr/local)
 RUN npm install -g @openai/codex \
-    && npm install -g @google/gemini-cli
+    && npm install -g @google/gemini-cli \
+    && npm install -g @anthropic-ai/claude-code \
+    && npm install -g opencode-ai
 
-# Claude Code (native binary installer)
-RUN curl -fsSL https://claude.ai/install.sh | bash
-
-# OpenCode (native binary installer)
-RUN curl -fsSL https://opencode.ai/install | bash
-
-# Kimi CLI (Python-based; official installer expects glibc, so use pip on Alpine)
-RUN apk add --no-cache py3-pip py3-setuptools \
-    && pip install --break-system-packages kimi-cli \
-    || echo "WARN: kimi-cli install failed — Kimi CLI will not be available"
+# Kimi CLI (Python-based, installed via uv)
+RUN apk add --no-cache py3-pip python3-dev \
+    && pip install --break-system-packages uv \
+    && uv tool install kimi-cli \
+    && ln -s /root/.local/bin/kimi /usr/local/bin/kimi
 
 # --- Switch to non-root user for runtime ---
 USER coder
@@ -75,8 +76,10 @@ WORKDIR /home/coder
 RUN git config --global init.defaultBranch main \
     && git config --global pull.rebase false
 
-# Ensure native installer binaries are discoverable
+# Ensure home-local binaries are discoverable (for user-installed tools at runtime)
 ENV PATH="/home/coder/.local/bin:${PATH}"
+# Set SHELL explicitly for freshell's PTY spawning
+ENV SHELL=/bin/bash
 
 # --- Freshell configuration (overridable at runtime) ---
 ENV PORT=3001
