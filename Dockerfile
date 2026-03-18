@@ -32,8 +32,10 @@ RUN apk add --no-cache \
     build-base python3 \
     git openssh-client tmux ripgrep jq curl bash ca-certificates
 
-# Create non-root user
-RUN addgroup -g 1000 coder \
+# Replace Alpine's built-in 'node' user with our own at UID 1000
+# (node user is not a dependency — see nodejs/docker-node best practices)
+RUN deluser --remove-home node \
+    && addgroup -g 1000 coder \
     && adduser -D -u 1000 -G coder -s /bin/bash coder
 
 # Copy freshell from build stage
