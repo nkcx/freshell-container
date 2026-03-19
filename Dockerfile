@@ -1,7 +1,9 @@
 # --- Build stage ---
-FROM node:22-alpine AS build
+FROM node:22-bookworm-slim AS build
 
-RUN apk add --no-cache git python3 build-base
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git python3 build-essential ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 # Fetch the latest freshell release tag dynamically, or pin via build arg
 ARG FRESHELL_VERSION=""
@@ -26,30 +28,22 @@ RUN if [ -n "${FRESHELL_VERSION}" ]; then \
     && npm run build
 
 # --- Runtime stage ---
-FROM node:22-alpine
+FROM node:22-bookworm-slim
 
-# Runtime dependencies:
-#   - build-base/python3 for node-pty native module rebuild
-#   - bash required by freshell and most CLI tools
-#   - dev workflow essentials
-RUN apk add --no-cache \
-    build-base python3 \
-    git openssh-client tmux ripgrep jq curl bash ca-certificates
+# Runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential python3 \
+    git openssh-client tmux ripgrep jq curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
-# Replace Alpine's built-in 'node' user with our own at UID 1000
+# Replace the built-in 'node' user with our own at UID 1000
 # (node user is not a dependency — see nodejs/docker-node best practices)
-RUN deluser --remove-home node \
-    && addgroup -g 1000 coder \
-    && adduser -D -u 1000 -G coder -s /bin/bash coder
-
-# Verify shell is set (Alpine adduser can silently ignore -s if shell doesn't exist)
-RUN grep coder /etc/passwd | grep -q /bin/bash \
-    || sed -i 's|coder:.*:/bin/.*|coder:x:1000:1000::/home/coder:/bin/bash|' /etc/passwd
+RUN userdel -r node \
+    && groupadd -g 1000 coder \
+    && useradd -m -u 1000 -g coder -s /bin/bash coder
 
 # Copy freshell from build stage
 COPY --from=build /opt/freshell /opt/freshell
-# Rebuild native modules (node-pty) against runtime environment
-RUN cd /opt/freshell && npm rebuild node-pty
 RUN chown -R coder:coder /opt/freshell
 
 # Install entrypoint script
@@ -64,11 +58,17 @@ RUN npm install -g @openai/codex \
     && npm install -g @anthropic-ai/claude-code \
     && npm install -g opencode-ai
 
+# Claude Code native installer (preferred over npm, installs to /usr/local/bin)
+# Uncomment the line below and remove @anthropic-ai/claude-code from npm if native works:
+# RUN curl -fsSL https://claude.ai/install.sh | bash
+
 # Kimi CLI (Python-based, installed via uv)
-RUN apk add --no-cache py3-pip python3-dev \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3-pip python3-venv \
+    && rm -rf /var/lib/apt/lists/* \
     && pip install --break-system-packages uv \
     && uv tool install kimi-cli \
-    && ln -s /root/.local/bin/kimi /usr/local/bin/kimi
+    && ln -sf /root/.local/bin/kimi /usr/local/bin/kimi
 
 # --- Switch to non-root user for runtime ---
 USER coder
