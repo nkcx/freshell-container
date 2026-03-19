@@ -1,6 +1,7 @@
 #!/bin/bash
 set -e
 
+LOG_PREFIX="freshell-container"
 FRESHELL_DIR="/opt/freshell"
 HOME_DIR="/home/coder"
 EXTENSIONS_IMPORT="/extensions"
@@ -13,7 +14,7 @@ FRESHELL_CONFIG="${HOME_DIR}/.freshell/config.json"
 # already has the user's data and this is a no-op.
 
 if [ ! -f "${HOME_DIR}/.bashrc" ]; then
-    echo "[freshell-alpine] First run detected — initializing home directory..."
+    echo "[${LOG_PREFIX}] First run detected — initializing home directory..."
     cp /etc/skel/.bashrc "${HOME_DIR}/.bashrc" 2>/dev/null || true
     cp /etc/skel/.profile "${HOME_DIR}/.profile" 2>/dev/null || true
 fi
@@ -31,7 +32,7 @@ mkdir -p "${HOME_DIR}/projects"
 # In a container, we pre-seed this so the UI is immediately accessible.
 
 if [ ! -f "${FRESHELL_CONFIG}" ]; then
-    echo "[freshell-alpine] Creating freshell config with remote access enabled..."
+    echo "[${LOG_PREFIX}] Creating freshell config with remote access enabled..."
     mkdir -p "${HOME_DIR}/.freshell"
     cat > "${FRESHELL_CONFIG}" <<'CONFIGEOF'
 {
@@ -111,7 +112,7 @@ if [ ! -f "${FRESHELL_CONFIG}" ]; then
   "recentDirectories": []
 }
 CONFIGEOF
-    echo "[freshell-alpine] Config created — remote access enabled, all providers active."
+    echo "[${LOG_PREFIX}] Config created — remote access enabled, all providers active."
 fi
 
 # --- Extension volume support ---
@@ -120,7 +121,7 @@ fi
 # without conflicting with freshell's own extension management.
 
 if [ -d "${EXTENSIONS_IMPORT}" ] && [ "$(ls -A ${EXTENSIONS_IMPORT} 2>/dev/null)" ]; then
-    echo "[freshell-alpine] Importing extensions from ${EXTENSIONS_IMPORT}..."
+    echo "[${LOG_PREFIX}] Importing extensions from ${EXTENSIONS_IMPORT}..."
     mkdir -p "${EXTENSIONS_TARGET}"
     cp -rn "${EXTENSIONS_IMPORT}/"* "${EXTENSIONS_TARGET}/" 2>/dev/null || true
 fi
