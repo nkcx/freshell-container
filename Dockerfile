@@ -55,15 +55,8 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 # npm-based providers (install to /usr/local)
 RUN npm install -g @openai/codex \
     && npm install -g @google/gemini-cli \
+    && npm install -g @anthropic-ai/claude-code \
     && npm install -g opencode-ai
-
-# Claude Code (native installer, preferred over deprecated npm package)
-# Override HOME so the installer places the binary in /opt/claude instead of /root.
-# Symlink to /usr/local/bin for PATH accessibility.
-RUN mkdir -p /opt/claude \
-    && export HOME=/opt/claude \
-    && curl -fsSL https://claude.ai/install.sh | bash \
-    && ln -sf /opt/claude/.local/bin/claude /usr/local/bin/claude
 
 # Kimi CLI (Python-based, requires newer Python than system default)
 # UV_TOOL_BIN_DIR puts executables in /usr/local/bin instead of ~/.local/bin
