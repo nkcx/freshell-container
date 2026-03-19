@@ -37,7 +37,7 @@ Open `http://localhost:3001` and enter your auth token.
 
 ## Docker Compose
 
-See [`etherium.yaml`](etherium.yaml) for a production-ready compose file.
+See [`docker-compose.yaml`](docker-compose.yaml) for a production-ready compose file.
 
 ### Environment variables
 
