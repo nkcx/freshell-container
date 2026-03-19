@@ -62,13 +62,16 @@ RUN npm install -g @openai/codex \
 # Uncomment the line below and remove @anthropic-ai/claude-code from npm if native works:
 # RUN curl -fsSL https://claude.ai/install.sh | bash
 
-# Kimi CLI (Python-based, installed via uv)
+# Kimi CLI (Python-based, requires newer Python than system default)
+# Install as root; uv manages its own Python 3.13 for kimi-cli compatibility.
+# Symlink the binary to /usr/local/bin so it's available to all users.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3-pip python3-venv \
+    python3-pip \
     && rm -rf /var/lib/apt/lists/* \
     && pip install --break-system-packages uv \
-    && uv tool install kimi-cli \
-    && ln -sf /root/.local/bin/kimi /usr/local/bin/kimi
+    && uv tool install kimi-cli --python 3.13 \
+    && ln -sf /root/.local/bin/kimi /usr/local/bin/kimi \
+    && ln -sf /root/.local/bin/kimi-cli /usr/local/bin/kimi-cli
 
 # --- Switch to non-root user for runtime ---
 USER coder
@@ -78,8 +81,6 @@ WORKDIR /home/coder
 RUN git config --global init.defaultBranch main \
     && git config --global pull.rebase false
 
-# Ensure home-local binaries are discoverable (for user-installed tools at runtime)
-ENV PATH="/home/coder/.local/bin:${PATH}"
 # Set SHELL explicitly for freshell's PTY spawning
 ENV SHELL=/bin/bash
 
