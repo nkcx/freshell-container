@@ -1,8 +1,11 @@
 # freshell-container
 
-Debian slim-based Docker container packaging [Freshell](https://github.com/danshapiro/freshell)
+Docker container packaging [Freshell](https://github.com/danshapiro/freshell)
 with all supported coding CLI providers and common development tools. Designed as a
 persistent, browser-accessible, multi-device development environment.
+
+Based on `node:22-bookworm-slim` (Debian). Alpine was evaluated but `node-pty`
+(freshell's terminal spawning library) segfaults on musl libc.
 
 ## What's included
 
@@ -27,7 +30,7 @@ docker run -d \
   -p 3001:3001 \
   -e AUTH_TOKEN=$(openssl rand -hex 32) \
   -v freshell-home:/home/coder \
-  ghcr.io/nkcx/freshell-alpine:latest
+  ghcr.io/nkcx/freshell-container:latest
 ```
 
 Open `http://localhost:3001` and enter your auth token.
@@ -102,10 +105,10 @@ To inject extensions from an external volume at startup, mount a read-only volum
 
 ```bash
 # Auto-detect latest freshell release
-docker build -t freshell-alpine .
+docker build -t freshell-container .
 
 # Pin to a specific freshell version
-docker build --build-arg FRESHELL_VERSION=v0.6.0 -t freshell-alpine .
+docker build --build-arg FRESHELL_VERSION=v0.6.0 -t freshell-container .
 ```
 
 ## Updating
