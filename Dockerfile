@@ -60,7 +60,9 @@ RUN npm install -g @openai/codex \
 # Claude Code (native installer, preferred over deprecated npm package)
 # Override HOME so the installer places the binary in /opt/claude instead of /root.
 # Symlink to /usr/local/bin for PATH accessibility.
-RUN HOME=/opt/claude curl -fsSL https://claude.ai/install.sh | bash \
+RUN mkdir -p /opt/claude \
+    && export HOME=/opt/claude \
+    && curl -fsSL https://claude.ai/install.sh | bash \
     && ln -sf /opt/claude/.local/bin/claude /usr/local/bin/claude
 
 # Kimi CLI (Python-based, requires newer Python than system default)
