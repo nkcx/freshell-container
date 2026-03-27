@@ -118,12 +118,12 @@ To inject extensions from an external volume at startup, mount a read-only volum
 docker build -t freshell-container .
 
 # Pin to a specific freshell version
-docker build --build-arg FRESHELL_VERSION=v0.6.0 -t freshell-container .
+docker build --build-arg FRESHELL_VERSION=v0.7.0 -t freshell-container .
 ```
 
 ## Updating
 
-The GitHub Actions workflow rebuilds weekly to pick up new freshell releases
+The GitHub Actions workflow rebuilds daily to pick up new freshell releases
 and base image security patches. To trigger manually, use the workflow dispatch
 button on GitHub.
 
@@ -144,10 +144,20 @@ providers, each with their own dependency trees. The main contributors:
 triggers a build step that may recompile native modules. If freshell ships prebuilt
 binaries or skips recompilation in a future release, this can be removed.
 
+## Multi-device usage
+
+Freshell v0.7.0+ uses per-device tab tracking. Each browser gets a unique device ID
+(stored in localStorage), and open terminal tabs are scoped to that device. This is
+by design — a tab represents a live terminal session in a specific browser window.
+
+**Coding CLI sessions** (Claude, Codex, etc.) are shared across all devices and
+appear in every browser's sidebar. Only the "open tabs" state is per-device.
+
+If you want to see tabs from other devices, the sidebar shows a "remote" section
+with tabs open on other connected browsers.
+
 ## Known issues
 
-- **OpenCode, Gemini, and Kimi** are detected by freshell's API but may not appear
-  in the new-tab dropdown menu in v0.6.0. They can be launched from any shell tab.
 - **Claude Code auto-update** is disabled by using the npm package instead of the
   native installer. Updates come via container image rebuilds.
 

@@ -6,9 +6,9 @@ on:
     tags: ['v*']
   pull_request:
     branches: [main]
-  # Rebuild weekly to pick up new freshell releases and security patches
+  # Rebuild daily to pick up new freshell releases and security patches
   schedule:
-    - cron: '0 6 * * 1'
+    - cron: '0 6 * * *'
   workflow_dispatch:
 
 env:
