@@ -34,8 +34,10 @@ FROM node:22-bookworm-slim
 # Shells: bash (default), zsh, fish, dash (configurable via FRESHELL_SHELL env var)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential python3 \
-    git openssh-client tmux ripgrep jq curl ca-certificates \
+    git openssh-client tmux ripgrep jq curl wget ca-certificates \
     bash zsh fish dash \
+    iputils-ping dnsutils traceroute netcat-openbsd \
+    lsof htop less file tree unzip vim-tiny nano \
     && rm -rf /var/lib/apt/lists/*
 
 # Replace the built-in 'node' user with our own at UID 1000
