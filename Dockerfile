@@ -56,11 +56,15 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # --- Install code providers as root ---
 
+# Cache-bust: changing this arg forces Docker to re-run all provider installs,
+# ensuring daily builds pick up the latest versions from npm/PyPI.
+ARG CACHE_BUST=""
+
 # npm-based providers (install to /usr/local)
 # Note: @anthropic-ai/claude-code is deprecated but is the most reliable method
 # for Docker containers. The native installer writes to ~/.local which conflicts
 # with the persistent /home/coder volume mount and has auto-update issues.
-RUN npm install -g @openai/codex \
+RUN echo "cache-bust: ${CACHE_BUST}" && npm install -g @openai/codex \
     && npm install -g @google/gemini-cli \
     && npm install -g @anthropic-ai/claude-code \
     && npm install -g opencode-ai \

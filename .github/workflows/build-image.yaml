@@ -59,3 +59,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           # FRESHELL_VERSION intentionally unset — Dockerfile auto-detects latest release
+          # CACHE_BUST ensures provider install layers are rebuilt each run
+          build-args: |
+            CACHE_BUST=${{ github.run_id }}-${{ github.run_attempt }}
