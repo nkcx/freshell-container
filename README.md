@@ -28,7 +28,17 @@ image rebuilds, making it the better fit for Docker environments.
 
 **Shells:** bash (default), zsh, fish, dash — configurable via `FRESHELL_SHELL` env var
 
-**Dev tools:** git, ssh, tmux, ripgrep, jq, curl
+**Dev tools:**
+- **Version control:** git, gh (GitHub CLI), ssh
+- **Editors / pagers:** vim-tiny, nano, less
+- **Search / text:** ripgrep, jq, yq, file, tree
+- **Transfer:** curl, wget, rsync
+- **Networking diagnostics:** ping, dig, traceroute, nc
+- **System diagnostics:** lsof, htop, tmux
+- **Archives:** tar, gzip, unzip
+- **Databases:** sqlite3, psql (postgresql-client), mysql (mariadb-client)
+- **Containers:** docker (CLI only — requires socket mount, see below)
+- **Misc:** gnupg, bash-completion
 
 ## Quick start
 
@@ -86,6 +96,53 @@ volume, extensions installed at runtime survive container updates.
 To inject extensions from an external volume at startup, mount a read-only volume at
 `/extensions`. The entrypoint copies any files found there into `~/.freshell/extensions/`
 (without overwriting existing files).
+
+## Docker CLI support
+
+The container ships with the Docker CLI but no daemon. To use `docker` commands
+from inside the container, mount the host's Docker socket:
+
+```yaml
+volumes:
+  - /var/run/docker.sock:/var/run/docker.sock
+```
+
+Or via `docker run`:
+
+```bash
+-v /var/run/docker.sock:/var/run/docker.sock
+```
+
+You'll also need to grant the `coder` user access to the socket. The simplest
+approach is to add a supplementary group matching the host's `docker` group GID:
+
+```yaml
+user: "1000:1000"
+group_add:
+  - "${DOCKER_GID}"   # host's `getent group docker | cut -d: -f3`
+```
+
+### ⚠️ Security warning
+
+**Mounting the Docker socket gives this container root-equivalent access to the
+host.** Anything running inside — including any AI coding agent you grant
+permissions to — can:
+
+- Start privileged containers that bypass all isolation
+- Mount any host filesystem path and read/write arbitrary files
+- Access other containers' data, networks, and secrets
+- Effectively become root on the host machine
+
+Only enable this if you fully trust everything running inside the container,
+including the AI agents. In a single-user homelab this may be an acceptable
+trade-off; in a shared or production environment it almost certainly is not.
+
+Alternatives to consider:
+- **Remote Docker context**: configure `DOCKER_HOST` to point at a TCP socket
+  with TLS client certificates — more access control, but more setup
+- **Rootless Docker/Podman on the host**: keeps socket access from escalating
+  to host root, though containers can still interfere with each other
+- **Skip container support entirely**: manage host containers from the host
 
 ## First-run setup
 
