@@ -33,7 +33,7 @@ FROM node:22-bookworm-slim
 # Runtime dependencies (build-essential needed for node-pty native module)
 # Shells: bash (default), zsh, fish, dash (configurable via FRESHELL_SHELL env var)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential python3 \
+    build-essential python3 python3-dev python3-venv \
     git openssh-client tmux ripgrep jq curl wget ca-certificates \
     bash zsh fish dash \
     iputils-ping dnsutils traceroute netcat-openbsd \
