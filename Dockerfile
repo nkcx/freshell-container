@@ -92,6 +92,7 @@ ARG CACHE_BUST=""
 # with the persistent /home/coder volume mount and has auto-update issues.
 RUN echo "cache-bust: ${CACHE_BUST}" && npm install -g @openai/codex \
     && npm install -g @google/gemini-cli \
+    && npm install -g @google/antigravity \
     && npm install -g @anthropic-ai/claude-code \
     && npm install -g opencode-ai \
     && npm cache clean --force
@@ -132,7 +133,11 @@ ENV SKIP_UPDATE_CHECK=true
 WORKDIR /opt/freshell
 EXPOSE 3001
 
-# Persistent home: Claude/Codex/Gemini/Kimi/OpenCode credentials,
+# Default the Freshell "gemini" provider to launch Antigravity CLI (agy).
+# Override with GEMINI_CMD=gemini to use the legacy Gemini CLI instead.
+ENV GEMINI_CMD=agy
+
+# Persistent home: Claude/Codex/Gemini/Antigravity/Kimi/OpenCode credentials,
 # freshell state, SSH keys, git config, project repos, shell history
 VOLUME ["/home/coder"]
 
