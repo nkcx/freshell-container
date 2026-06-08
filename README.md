@@ -17,7 +17,7 @@ Based on `node:22-bookworm-slim` (Debian). Alpine was evaluated but `node-pty`
 - [Claude Code](https://code.claude.com) (Anthropic) — npm (`@anthropic-ai/claude-code`)*
 - [Codex CLI](https://github.com/openai/codex) (OpenAI) — npm
 - [OpenCode](https://opencode.ai) (SST) — npm
-- [Antigravity CLI](https://github.com/google-antigravity/antigravity-cli) (Google) — npm (`agy` command)
+- [Antigravity CLI](https://github.com/google-antigravity/antigravity-cli) (Google) — official installer (`agy` command)
 - [Gemini CLI](https://github.com/google-gemini/gemini-cli) (Google) — npm (sunset June 18, 2026)
 - [Kimi CLI](https://github.com/MoonshotAI/kimi-cli) (Moonshot AI) — uv (Python 3.13)
 
@@ -199,7 +199,8 @@ each build auto-detects the latest tagged release from upstream.
 The image is larger than typical containers (~4GB) due to bundling six code
 providers, each with their own dependency trees. The main contributors:
 
-- npm global packages (Codex, Gemini, Antigravity, OpenCode, Claude Code): ~1.4GB
+- npm global packages (Codex, Gemini, OpenCode, Claude Code): ~1.2GB
+- Antigravity CLI (Go binary): ~50MB
 - Freshell + node_modules: ~600MB
 - Kimi CLI + Python 3.13 environment: ~200MB
 - build-essential (required for node-pty): ~200MB

@@ -92,10 +92,14 @@ ARG CACHE_BUST=""
 # with the persistent /home/coder volume mount and has auto-update issues.
 RUN echo "cache-bust: ${CACHE_BUST}" && npm install -g @openai/codex \
     && npm install -g @google/gemini-cli \
-    && npm install -g @google/antigravity \
     && npm install -g @anthropic-ai/claude-code \
     && npm install -g opencode-ai \
     && npm cache clean --force
+
+# Antigravity CLI (Google, Go binary) — replaces Gemini CLI after June 18 2026.
+# Uses Google's official installer with --dir to place the binary in /usr/local/bin
+# instead of the default ~/.local/bin (which conflicts with the persistent volume).
+RUN curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- --dir /usr/local/bin
 
 # Kimi CLI (Python-based, requires newer Python than system default)
 # UV_TOOL_BIN_DIR puts executables in /usr/local/bin instead of ~/.local/bin
