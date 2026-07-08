@@ -5,7 +5,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git python3 build-essential ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Fetch the latest freshell release tag dynamically, or pin via build arg
+# Freshell version — CI resolves stable vs RC from the GitHub Releases API.
+# When unset, falls back to the highest semver tag (which may be a prerelease).
 ARG FRESHELL_VERSION=""
 WORKDIR /opt/freshell
 RUN if [ -n "${FRESHELL_VERSION}" ]; then \

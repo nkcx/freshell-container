@@ -16,11 +16,62 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  resolve-freshell:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.value }}
+    steps:
+      - name: Determine Freshell versions
+        id: matrix
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Latest stable (non-prerelease) release
+          STABLE=$(curl -sL -H "Authorization: Bearer $GH_TOKEN" \
+            https://api.github.com/repos/danshapiro/freshell/releases/latest \
+            | jq -r '.tag_name')
+
+          if [ -z "$STABLE" ] || [ "$STABLE" = "null" ]; then
+            echo "ERROR: Could not determine stable Freshell version"
+            exit 1
+          fi
+
+          # Latest prerelease (release candidate)
+          RC=$(curl -sL -H "Authorization: Bearer $GH_TOKEN" \
+            https://api.github.com/repos/danshapiro/freshell/releases \
+            | jq -r '[.[] | select(.prerelease)] | sort_by(.created_at) | last | .tag_name // empty')
+
+          # Compare versions: if RC is newer than stable, build it separately.
+          # Otherwise (no RC, or RC is older/equal), rc tag points at stable.
+          RC_IS_NEWER=false
+          if [ -n "$RC" ] && [ "$RC" != "$STABLE" ]; then
+            STABLE_SORT=$(echo "$STABLE" | sed 's/^v//')
+            RC_SORT=$(echo "$RC" | sed 's/^v//')
+            NEWER=$(printf '%s\n%s\n' "$STABLE_SORT" "$RC_SORT" \
+              | sort -t. -k1,1n -k2,2n -k3,3n | tail -n1)
+            if [ "$NEWER" = "$RC_SORT" ]; then
+              RC_IS_NEWER=true
+            fi
+          fi
+
+          if [ "$RC_IS_NEWER" = "true" ]; then
+            MATRIX="{\"include\":[{\"channel\":\"stable\",\"freshell_version\":\"$STABLE\"},{\"channel\":\"rc\",\"freshell_version\":\"$RC\"}]}"
+          else
+            MATRIX="{\"include\":[{\"channel\":\"stable-and-rc\",\"freshell_version\":\"$STABLE\"}]}"
+          fi
+
+          echo "Stable: $STABLE, RC: ${RC:-none}, RC is newer: $RC_IS_NEWER"
+          echo "value=$MATRIX" >> "$GITHUB_OUTPUT"
+
   build-and-push:
+    needs: resolve-freshell
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+    strategy:
+      matrix: ${{ fromJson(needs.resolve-freshell.outputs.matrix) }}
+      fail-fast: false
 
     steps:
       - name: Checkout
@@ -43,11 +94,12 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=ref,event=branch
-            type=sha
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ matrix.channel != 'rc' && github.ref == 'refs/heads/main' }}
+            type=raw,value=rc,enable=${{ matrix.channel != 'stable' && github.ref == 'refs/heads/main' }}
+            type=semver,pattern={{version}},enable=${{ matrix.channel != 'rc' }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ matrix.channel != 'rc' }}
+            type=ref,event=branch,enable=${{ matrix.channel != 'rc' }}
+            type=sha,enable=${{ matrix.channel != 'rc' }}
 
       - name: Build and push
         uses: docker/build-push-action@v7
@@ -58,7 +110,6 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          # FRESHELL_VERSION intentionally unset — Dockerfile auto-detects latest release
-          # CACHE_BUST ensures provider install layers are rebuilt each run
           build-args: |
+            FRESHELL_VERSION=${{ matrix.freshell_version }}
             CACHE_BUST=${{ github.run_id }}-${{ github.run_attempt }}

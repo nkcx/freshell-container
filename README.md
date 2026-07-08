@@ -58,6 +58,12 @@ docker run -d \
   ghcr.io/nkcx/freshell-container:latest
 ```
 
+To run the release candidate (latest Freshell prerelease):
+
+```bash
+ghcr.io/nkcx/freshell-container:rc
+```
+
 Open `http://localhost:3001` and enter your auth token.
 
 ## Docker Compose
@@ -185,14 +191,24 @@ docker build -t freshell-container .
 docker build --build-arg FRESHELL_VERSION=v0.7.0 -t freshell-container .
 ```
 
+## Image tags
+
+| Tag | Freshell version | Description |
+|---|---|---|
+| `latest` | Latest stable release | Production-ready; updated daily |
+| `rc` | Latest release candidate | Pre-release; updated daily when an RC exists |
+| `v1.2.3` | Pinned container version | Tracks a specific freshell-container release |
+| `sha-abc1234` | Pinned to commit | Exact build from a specific commit |
+
 ## Updating
 
 The GitHub Actions workflow rebuilds daily to pick up new freshell releases
-and base image security patches. To trigger manually, use the workflow dispatch
-button on GitHub.
+and base image security patches. Both `latest` (stable) and `rc` (release
+candidate) tags are rebuilt on every run. To trigger manually, use the workflow
+dispatch button on GitHub.
 
-The `FRESHELL_VERSION` build arg is intentionally unset by default so that
-each build auto-detects the latest tagged release from upstream.
+Freshell versions are resolved automatically from the upstream GitHub Releases
+API — stable releases go to `latest`, prereleases go to `rc`.
 
 ## Image size
 
