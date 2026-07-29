@@ -28,13 +28,13 @@ RUN if [ -n "${FRESHELL_VERSION}" ]; then \
     && npm ci \
     && npm run build
 
-# --- Runtime stage ---
-FROM node:22-bookworm-slim
+# --- Shared runtime base ---
+FROM node:22-bookworm-slim AS runtime-base
 
 # Runtime dependencies (build-essential needed for node-pty native module)
 # Shells: bash (default), zsh, fish, dash (configurable via FRESHELL_SHELL env var)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential python3 python3-dev python3-venv \
+    build-essential python3 python3-dev python3-venv python3-pip \
     git openssh-client tmux ripgrep jq curl wget ca-certificates \
     bash zsh fish dash \
     iputils-ping dnsutils traceroute netcat-openbsd \
@@ -61,14 +61,23 @@ RUN install -m 0755 -d /etc/apt/keyrings \
     && rm -rf /var/lib/apt/lists/*
 
 # yq (Go version, mikefarah/yq) — YAML/JSON/XML processor.
-# Installed as a pinned static binary; bump YQ_VERSION to upgrade.
 ARG YQ_VERSION=v4.44.3
 RUN curl -fsSL "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_$(dpkg --print-architecture)" \
       -o /usr/local/bin/yq \
     && chmod +x /usr/local/bin/yq
 
+# supercronic — cron for containers (single static binary, runs as non-root).
+ARG SUPERCRONIC_VERSION=v0.2.33
+RUN ARCH=$(dpkg --print-architecture) \
+    && curl -fsSL "https://github.com/aptible/supercronic/releases/download/${SUPERCRONIC_VERSION}/supercronic-linux-${ARCH}" \
+       -o /usr/local/bin/supercronic \
+    && chmod +x /usr/local/bin/supercronic
+
+# uv (Python package manager) — needed by both variants for kimi-cli support.
+RUN pip install --break-system-packages uv \
+    && rm -rf /root/.cache/pip
+
 # Replace the built-in 'node' user with our own at UID 1000
-# (node user is not a dependency — see nodejs/docker-node best practices)
 RUN userdel -r node \
     && groupadd -g 1000 coder \
     && useradd -m -u 1000 -g coder -s /bin/bash coder
@@ -77,40 +86,17 @@ RUN userdel -r node \
 COPY --from=build /opt/freshell /opt/freshell
 RUN chown -R coder:coder /opt/freshell
 
-# Install entrypoint script
+# Install entrypoint and provider management scripts
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
+COPY manage-providers.sh /usr/local/bin/manage-providers.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/manage-providers.sh
 
-# --- Install code providers as root ---
+# Provider volume directory (used by lite variant, harmless for full)
+RUN mkdir -p /opt/providers/bin && chown -R coder:coder /opt/providers
 
-# Cache-bust: changing this arg forces Docker to re-run all provider installs,
-# ensuring daily builds pick up the latest versions from npm/PyPI.
-ARG CACHE_BUST=""
-
-# npm-based providers (install to /usr/local)
-# Note: @anthropic-ai/claude-code is deprecated but is the most reliable method
-# for Docker containers. The native installer writes to ~/.local which conflicts
-# with the persistent /home/coder volume mount and has auto-update issues.
-RUN echo "cache-bust: ${CACHE_BUST}" && npm install -g @openai/codex \
-    && npm install -g @anthropic-ai/claude-code \
-    && npm install -g opencode-ai \
-    && npm cache clean --force
-
-# Antigravity CLI (Google, Go binary — `agy` command)
-# Uses Google's official installer with --dir to place the binary in /usr/local/bin
-# instead of the default ~/.local/bin (which conflicts with the persistent volume).
-RUN curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- --dir /usr/local/bin
-
-# Kimi CLI (Python-based, requires newer Python than system default)
-# UV_TOOL_BIN_DIR puts executables in /usr/local/bin instead of ~/.local/bin
-# UV_TOOL_DIR stores the venv in a system-wide location (survives volume mount over /home/coder)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3-pip \
-    && rm -rf /var/lib/apt/lists/* \
-    && pip install --break-system-packages uv \
-    && UV_TOOL_BIN_DIR=/usr/local/bin UV_TOOL_DIR=/opt/uv-tools \
-       uv tool install kimi-cli --python 3.13 \
-    && rm -rf /root/.cache/uv /root/.cache/pip
+# Add /opt/providers/bin to PATH for all shells via profile.d
+RUN echo 'export PATH="/opt/providers/bin:$PATH"' > /etc/profile.d/providers-path.sh \
+    && chmod +x /etc/profile.d/providers-path.sh
 
 # --- Cleanup build dependencies not needed at runtime ---
 # node-pty requires build-essential to compile, but only during npm install/rebuild.
@@ -118,18 +104,38 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # TODO: If freshell ships prebuilt node-pty or skips rebuild, remove build-essential here:
 # RUN apt-get purge -y --auto-remove build-essential && rm -rf /var/lib/apt/lists/*
 
-# --- Switch to non-root user for runtime ---
+# --- Full variant (providers baked in) ---
+FROM runtime-base AS full
+
+# Cache-bust: changing this arg forces Docker to re-run all provider installs,
+# ensuring daily builds pick up the latest versions from npm/PyPI.
+ARG CACHE_BUST=""
+
+# npm-based providers (install to /usr/local)
+RUN echo "cache-bust: ${CACHE_BUST}" && npm install -g @openai/codex \
+    && npm install -g @anthropic-ai/claude-code \
+    && npm install -g opencode-ai \
+    && npm cache clean --force
+
+# Antigravity CLI (Google, Go binary — `agy` command)
+RUN curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- --dir /usr/local/bin
+
+# Kimi CLI (Python-based)
+# UV_TOOL_BIN_DIR puts executables in /usr/local/bin instead of ~/.local/bin
+# UV_TOOL_DIR stores the venv in a system-wide location (survives volume mount over /home/coder)
+RUN UV_TOOL_BIN_DIR=/usr/local/bin UV_TOOL_DIR=/opt/uv-tools \
+       uv tool install kimi-cli --python 3.13 \
+    && rm -rf /root/.cache/uv
+
 USER coder
 WORKDIR /home/coder
 
-# Git defaults (overridable from persistent volume)
 RUN git config --global init.defaultBranch main \
     && git config --global pull.rebase false
 
-# Default shell for freshell PTY spawning (overridable via FRESHELL_SHELL env var)
 ENV SHELL=/bin/bash
-
-# --- Freshell configuration (overridable at runtime) ---
+ENV FRESHELL_VARIANT=full
+ENV PATH="/opt/providers/bin:${PATH}"
 ENV PORT=3001
 ENV NODE_ENV=production
 ENV SKIP_UPDATE_CHECK=true
@@ -143,6 +149,33 @@ ENV GEMINI_CMD=agy
 
 # Persistent home: Claude/Codex/Antigravity/Kimi/OpenCode credentials,
 # freshell state, SSH keys, git config, project repos, shell history
+VOLUME ["/home/coder"]
+
+ENTRYPOINT ["entrypoint.sh"]
+CMD ["npm", "run", "serve"]
+
+# --- Lite variant (no providers baked in) ---
+FROM runtime-base AS lite
+
+USER coder
+WORKDIR /home/coder
+
+RUN git config --global init.defaultBranch main \
+    && git config --global pull.rebase false
+
+ENV SHELL=/bin/bash
+ENV FRESHELL_VARIANT=lite
+ENV PATH="/opt/providers/bin:${PATH}"
+ENV PORT=3001
+ENV NODE_ENV=production
+ENV SKIP_UPDATE_CHECK=true
+ENV FRESHELL_ALLOW_NON_MAIN_SERVE=1
+
+WORKDIR /opt/freshell
+EXPOSE 3001
+
+ENV GEMINI_CMD=agy
+
 VOLUME ["/home/coder"]
 
 ENTRYPOINT ["entrypoint.sh"]

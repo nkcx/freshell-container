@@ -31,5 +31,31 @@ services:
       #- freshell-extensions:/extensions:ro
     ports:
       - "3001:3001"
+
+  # --- Lite variant (uncomment to use instead of the full image) ---
+  # freshell-lite:
+  #   image: ghcr.io/nkcx/freshell-container:lite
+  #   container_name: freshell
+  #   restart: unless-stopped
+  #   user: "1000:1000"
+  #   environment:
+  #     - TZ=America/Los_Angeles
+  #     - AUTH_TOKEN=${AUTH_TOKEN}
+  #     - PORT=3001
+  #     # Comma-separated providers to install on first boot
+  #     - PROVIDERS=claude,codex
+  #     # Provider management modes (default: install,uninstall)
+  #     #- MANAGE_PROVIDERS=install,uninstall
+  #     # Auto-update providers on a schedule (cron expression)
+  #     #- UPDATE_CRON=0 4 * * *
+  #     #- ANTHROPIC_API_KEY=
+  #     #- OPENAI_API_KEY=
+  #   volumes:
+  #     - freshell-home:/home/coder
+  #     - freshell-providers:/opt/providers
+  #   ports:
+  #     - "3001:3001"
+
 volumes:
   freshell-home:
+  # freshell-providers:

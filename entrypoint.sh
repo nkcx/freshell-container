@@ -7,6 +7,7 @@ HOME_DIR="/home/coder"
 EXTENSIONS_IMPORT="/extensions"
 EXTENSIONS_TARGET="${HOME_DIR}/.freshell/extensions"
 FRESHELL_CONFIG="${HOME_DIR}/.freshell/config.json"
+VARIANT="${FRESHELL_VARIANT:-full}"
 
 # --- Shell configuration ---
 # FRESHELL_SHELL env var lets users choose their preferred shell.
@@ -42,6 +43,71 @@ mkdir -p "${HOME_DIR}/projects"
 mkdir -p "${HOME_DIR}/.freshell"
 mkdir -p "${EXTENSIONS_TARGET}"
 
+# --- Lite variant: provider management ---
+if [ "$VARIANT" = "lite" ] && [ "${PROVIDERS+set}" = "set" ]; then
+    MODES="${MANAGE_PROVIDERS:-install,uninstall}"
+    echo "[${LOG_PREFIX}] Managing providers (modes: ${MODES}, providers: ${PROVIDERS:-<none>})..."
+    manage-providers.sh --modes "$MODES" --providers "$PROVIDERS"
+fi
+
+# --- Provider name mapping (agy → gemini for Freshell config) ---
+map_provider_name() {
+    case "$1" in
+        agy) echo "gemini" ;;
+        *)   echo "$1" ;;
+    esac
+}
+
+# Build enabledProviders JSON array from PROVIDERS env var
+build_enabled_providers() {
+    local result="["
+    local first=true
+    if [ -n "$PROVIDERS" ]; then
+        IFS=',' read -ra provs <<< "$PROVIDERS"
+        for p in "${provs[@]}"; do
+            p=$(echo "$p" | tr -d '[:space:]')
+            [ -z "$p" ] && continue
+            local mapped
+            mapped=$(map_provider_name "$p")
+            if [ "$first" = true ]; then
+                first=false
+            else
+                result+=","
+            fi
+            result+="\"${mapped}\""
+        done
+    fi
+    result+="]"
+    echo "$result"
+}
+
+# Build providers config object from PROVIDERS env var
+build_providers_config() {
+    local result="{"
+    local first=true
+    if [ -n "$PROVIDERS" ]; then
+        IFS=',' read -ra provs <<< "$PROVIDERS"
+        for p in "${provs[@]}"; do
+            p=$(echo "$p" | tr -d '[:space:]')
+            [ -z "$p" ] && continue
+            local mapped
+            mapped=$(map_provider_name "$p")
+            if [ "$first" = true ]; then
+                first=false
+            else
+                result+=","
+            fi
+            if [ "$mapped" = "claude" ]; then
+                result+="\"${mapped}\":{\"permissionMode\":\"default\"}"
+            else
+                result+="\"${mapped}\":{}"
+            fi
+        done
+    fi
+    result+="}"
+    echo "$result"
+}
+
 # --- Pre-seed freshell config for remote access ---
 # Freshell binds to 127.0.0.1 until the setup wizard sets
 # network.host to 0.0.0.0 and network.configured to true in config.json.
@@ -49,7 +115,16 @@ mkdir -p "${EXTENSIONS_TARGET}"
 
 if [ ! -f "${FRESHELL_CONFIG}" ]; then
     echo "[${LOG_PREFIX}] Creating freshell config with remote access enabled..."
-    cat > "${FRESHELL_CONFIG}" <<'CONFIGEOF'
+
+    if [ "$VARIANT" = "lite" ]; then
+        ENABLED_PROVIDERS=$(build_enabled_providers)
+        PROVIDERS_CONFIG=$(build_providers_config)
+    else
+        ENABLED_PROVIDERS='["claude","codex","opencode","gemini","kimi"]'
+        PROVIDERS_CONFIG='{"claude":{"permissionMode":"default"},"codex":{},"opencode":{},"gemini":{},"kimi":{}}'
+    fi
+
+    cat > "${FRESHELL_CONFIG}" <<CONFIGEOF
 {
   "version": 1,
   "settings": {
@@ -93,22 +168,8 @@ if [ ! -f "${FRESHELL_CONFIG}" ]; then
       "collapsed": false
     },
     "codingCli": {
-      "enabledProviders": [
-        "claude",
-        "codex",
-        "opencode",
-        "gemini",
-        "kimi"
-      ],
-      "providers": {
-        "claude": {
-          "permissionMode": "default"
-        },
-        "codex": {},
-        "opencode": {},
-        "gemini": {},
-        "kimi": {}
-      }
+      "enabledProviders": ${ENABLED_PROVIDERS},
+      "providers": ${PROVIDERS_CONFIG}
     },
     "editor": {
       "externalEditor": "auto"
@@ -127,7 +188,30 @@ if [ ! -f "${FRESHELL_CONFIG}" ]; then
   "recentDirectories": []
 }
 CONFIGEOF
-    echo "[${LOG_PREFIX}] Config created — remote access enabled, all providers active."
+    echo "[${LOG_PREFIX}] Config created — remote access enabled."
+
+elif [ "$VARIANT" = "lite" ] && [ "${PROVIDERS+set}" = "set" ]; then
+    # Subsequent boot: update enabledProviders to match current PROVIDERS
+    ENABLED_PROVIDERS=$(build_enabled_providers)
+    TMP_CONFIG="${FRESHELL_CONFIG}.tmp"
+    jq --argjson ep "$ENABLED_PROVIDERS" '
+      .settings.codingCli.enabledProviders = $ep |
+      reduce ($ep[] | tostring) as $p (.;
+        if .settings.codingCli.providers[$p] == null then
+          .settings.codingCli.providers[$p] = (if $p == "claude" then {"permissionMode":"default"} else {} end)
+        else . end
+      )
+    ' "$FRESHELL_CONFIG" > "$TMP_CONFIG" && mv "$TMP_CONFIG" "$FRESHELL_CONFIG"
+    echo "[${LOG_PREFIX}] Updated enabledProviders in config."
+fi
+
+# --- Lite variant: UPDATE_CRON ---
+if [ "$VARIANT" = "lite" ] && [ -n "${UPDATE_CRON}" ] && [ "${PROVIDERS+set}" = "set" ] && [ -n "$PROVIDERS" ]; then
+    CRON_FILE="${HOME_DIR}/.freshell/update-crontab"
+    printf '%s /usr/local/bin/manage-providers.sh --modes update --providers %s\n' \
+        "$UPDATE_CRON" "$PROVIDERS" > "$CRON_FILE"
+    supercronic "$CRON_FILE" &
+    echo "[${LOG_PREFIX}] Provider update cron started: ${UPDATE_CRON}"
 fi
 
 # --- Extension volume support ---

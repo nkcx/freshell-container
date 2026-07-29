@@ -4,6 +4,9 @@ Docker container packaging [Freshell](https://github.com/danshapiro/freshell)
 with all supported coding CLI providers and common development tools. Designed as a
 persistent, browser-accessible, multi-device development environment.
 
+Available in two variants: **full** (all providers baked in, ~4GB) and
+**lite** (providers installed on first boot, ~2GB).
+
 Based on `node:22-bookworm-slim` (Debian). Alpine was evaluated but `node-pty`
 (freshell's terminal spawning library) segfaults on musl libc.
 
@@ -45,6 +48,8 @@ env var redirects it to launch Antigravity CLI.
 
 ## Quick start
 
+### Full image (all providers)
+
 ```bash
 docker run -d \
   --name freshell \
@@ -54,17 +59,82 @@ docker run -d \
   ghcr.io/nkcx/freshell-container:latest
 ```
 
-To run the release candidate (latest Freshell prerelease):
+### Lite image (choose your providers)
 
 ```bash
-ghcr.io/nkcx/freshell-container:rc
+docker run -d \
+  --name freshell \
+  -p 3001:3001 \
+  -e AUTH_TOKEN=$(openssl rand -hex 32) \
+  -e PROVIDERS=claude,codex \
+  -v freshell-home:/home/coder \
+  -v freshell-providers:/opt/providers \
+  ghcr.io/nkcx/freshell-container:lite
 ```
 
 Open `http://localhost:3001` and enter your auth token.
 
+## Lite variant
+
+The `lite` image ships the same base tools as `full` but without any pre-installed
+coding CLI providers. Instead, providers are installed at runtime into a separate
+`/opt/providers` volume based on the `PROVIDERS` environment variable.
+
+**Advantages:**
+- ~2GB smaller image (faster pulls, less storage)
+- Install only the providers you need
+- Provider updates without rebuilding the container
+
+**Trade-offs:**
+- First boot is slower (provider downloads)
+- Requires network access on first boot
+- Providers live on a separate volume that must be mounted
+
+### Provider management
+
+The `PROVIDERS` env var is a comma-separated list of provider names to install:
+`claude`, `codex`, `opencode`, `agy`, `kimi`.
+
+The `MANAGE_PROVIDERS` env var controls what happens at boot (default: `install,uninstall`):
+
+| Mode | Behavior |
+|---|---|
+| `install` | Install providers in `PROVIDERS` that aren't already present |
+| `uninstall` | Remove providers NOT in `PROVIDERS` that are present |
+| `update` | Update all listed providers to their latest versions |
+
+Examples:
+- `MANAGE_PROVIDERS=install` — only add new providers, never remove or update
+- `MANAGE_PROVIDERS=install,uninstall` — (default) reconcile to match `PROVIDERS` exactly
+- `MANAGE_PROVIDERS=install,uninstall,update` — full reconcile plus update on every boot
+
+**PROVIDERS semantics:**
+- Not set — provider management is skipped entirely
+- Empty (`PROVIDERS=""`) — with `uninstall` mode, removes all installed providers
+- Non-empty — reconcile against the list
+
+### Auto-updating providers
+
+Set `UPDATE_CRON` to a cron expression to automatically update providers on a schedule:
+
+```bash
+-e UPDATE_CRON="0 4 * * *"   # update daily at 4am
+```
+
+This runs `manage-providers.sh --modes update` on the specified schedule using
+[supercronic](https://github.com/aptible/supercronic).
+
+### Provider volume
+
+The lite variant installs providers to `/opt/providers`, which should be mounted as
+a separate Docker volume. This separates provider binaries from user data
+(`/home/coder`), allowing you to wipe the provider volume for a clean reinstall
+without losing credentials, SSH keys, or project files.
+
 ## Docker Compose
 
-See [`docker-compose.yaml`](docker-compose.yaml) for a production-ready compose file.
+See [`docker-compose.yaml`](docker-compose.yaml) for production-ready compose files
+for both full and lite variants.
 
 ### Environment variables
 
@@ -76,6 +146,9 @@ See [`docker-compose.yaml`](docker-compose.yaml) for a production-ready compose 
 | `FRESHELL_SHELL` | No | `/bin/bash` | Shell for terminal sessions (`/bin/zsh`, `/bin/fish`, `/bin/dash`) |
 | `ALLOWED_ORIGINS` | No | (auto-detect LAN) | Comma-separated CORS origins |
 | `SKIP_UPDATE_CHECK` | No | `true` | Disable freshell git-based auto-update |
+| `PROVIDERS` | Lite only | — | Comma-separated providers to install: `claude`, `codex`, `opencode`, `agy`, `kimi` |
+| `MANAGE_PROVIDERS` | Lite only | `install,uninstall` | Provider management modes (see above) |
+| `UPDATE_CRON` | Lite only | — | Cron expression for auto-updating providers (e.g., `0 4 * * *`) |
 | `CLAUDE_CMD` | No | `claude` | Claude Code binary override |
 | `CODEX_CMD` | No | `codex` | Codex CLI binary override |
 | `OPENCODE_CMD` | No | `opencode` | OpenCode binary override |
@@ -95,6 +168,9 @@ The `/home/coder` volume persists across container recreations:
 - `~/.ssh/` — SSH keys for git operations
 - `~/.gitconfig` — Git configuration
 - `~/projects/` — Cloned repositories (convention)
+
+The `/opt/providers` volume (lite variant only) stores installed provider binaries
+and their dependencies.
 
 ## Extensions
 
@@ -131,7 +207,7 @@ group_add:
   - "${DOCKER_GID}"   # host's `getent group docker | cut -d: -f3`
 ```
 
-### ⚠️ Security warning
+### Security warning
 
 **Mounting the Docker socket gives this container root-equivalent access to the
 host.** Anything running inside — including any AI coding agent you grant
@@ -180,42 +256,55 @@ Alternatives to consider:
 ## Building
 
 ```bash
-# Auto-detect latest freshell release
-docker build -t freshell-container .
+# Full variant (default) — all providers baked in
+docker build --target full -t freshell-container .
+
+# Lite variant — no providers, managed at runtime
+docker build --target lite -t freshell-container:lite .
 
 # Pin to a specific freshell version
-docker build --build-arg FRESHELL_VERSION=v0.7.0 -t freshell-container .
+docker build --target full --build-arg FRESHELL_VERSION=v0.7.0 -t freshell-container .
 ```
 
 ## Image tags
 
 | Tag | Freshell version | Description |
 |---|---|---|
-| `latest` | Latest stable release | Production-ready; updated daily |
-| `rc` | Latest release candidate | Pre-release; updated daily when an RC exists |
-| `v1.2.3` | Pinned container version | Tracks a specific freshell-container release |
-| `sha-abc1234` | Pinned to commit | Exact build from a specific commit |
+| `latest` | Latest stable release | Full image; production-ready; updated daily |
+| `rc` | Latest release candidate | Full image; pre-release; updated daily when an RC exists |
+| `lite` | Latest stable release | Lite image; providers installed at runtime |
+| `lite-rc` | Latest release candidate | Lite pre-release |
+| `v0.7.5` | Pinned to Freshell v0.7.5 | Full image tracking a specific upstream release |
+| `lite-v0.7.5` | Pinned to Freshell v0.7.5 | Lite image tracking a specific upstream release |
+| `sha-abc1234` | Pinned to commit | Full image from a specific container commit |
+
+When no release candidate exists (or the latest stable is newer than the latest RC),
+`rc` points at the same image as `latest`, and `lite-rc` points at the same image
+as `lite`.
 
 ## Updating
 
 The GitHub Actions workflow rebuilds daily to pick up new freshell releases
 and base image security patches. Both `latest` (stable) and `rc` (release
-candidate) tags are rebuilt on every run. To trigger manually, use the workflow
-dispatch button on GitHub.
+candidate) tags are rebuilt on every run, along with their lite counterparts.
+To trigger manually, use the workflow dispatch button on GitHub.
 
 Freshell versions are resolved automatically from the upstream GitHub Releases
-API — stable releases go to `latest`, prereleases go to `rc`.
+API — stable releases go to `latest`/`lite`, prereleases go to `rc`/`lite-rc`.
 
 ## Image size
 
-The image is larger than typical containers (~4GB) due to bundling five code
-providers, each with their own dependency trees. The main contributors:
+The **full** image is larger than typical containers (~4GB) due to bundling five
+code providers, each with their own dependency trees. The main contributors:
 
 - npm global packages (Codex, OpenCode, Claude Code): ~1GB
 - Antigravity CLI (Go binary): ~50MB
 - Freshell + node_modules: ~600MB
 - Kimi CLI + Python 3.13 environment: ~200MB
 - build-essential (required for node-pty): ~200MB
+
+The **lite** image is ~2GB — the same base without pre-installed providers.
+Providers are downloaded on first boot and stored on the provider volume.
 
 `build-essential` is retained in the runtime image because freshell's `npm run serve`
 triggers a build step that may recompile native modules. If freshell ships prebuilt
@@ -236,7 +325,8 @@ with tabs open on other connected browsers.
 ## Known issues
 
 - **Claude Code auto-update** is disabled by using the npm package instead of the
-  native installer. Updates come via container image rebuilds.
+  native installer. Updates come via container image rebuilds (full) or
+  `UPDATE_CRON` / manual `manage-providers.sh --modes update` (lite).
 
 ## License
 

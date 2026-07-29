@@ -3,7 +3,6 @@ name: Build and Publish Container
 on:
   push:
     branches: [main]
-    tags: ['v*']
   pull_request:
     branches: [main]
   # Rebuild daily to pick up new freshell releases and security patches
@@ -54,10 +53,23 @@ jobs:
             fi
           fi
 
+          # Build matrix: each channel × both variants (full, lite)
           if [ "$RC_IS_NEWER" = "true" ]; then
-            MATRIX="{\"include\":[{\"channel\":\"stable\",\"freshell_version\":\"$STABLE\"},{\"channel\":\"rc\",\"freshell_version\":\"$RC\"}]}"
+            MATRIX=$(jq -nc \
+              --arg sv "$STABLE" --arg rv "$RC" \
+              '{include:[
+                {channel:"stable", freshell_version:$sv, variant:"full"},
+                {channel:"stable", freshell_version:$sv, variant:"lite"},
+                {channel:"rc",     freshell_version:$rv, variant:"full"},
+                {channel:"rc",     freshell_version:$rv, variant:"lite"}
+              ]}')
           else
-            MATRIX="{\"include\":[{\"channel\":\"stable-and-rc\",\"freshell_version\":\"$STABLE\"}]}"
+            MATRIX=$(jq -nc \
+              --arg sv "$STABLE" \
+              '{include:[
+                {channel:"stable-and-rc", freshell_version:$sv, variant:"full"},
+                {channel:"stable-and-rc", freshell_version:$sv, variant:"lite"}
+              ]}')
           fi
 
           echo "Stable: $STABLE, RC: ${RC:-none}, RC is newer: $RC_IS_NEWER"
@@ -94,22 +106,30 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=latest,enable=${{ matrix.channel != 'rc' && github.ref == 'refs/heads/main' }}
-            type=raw,value=rc,enable=${{ matrix.channel != 'stable' && github.ref == 'refs/heads/main' }}
-            type=semver,pattern={{version}},enable=${{ matrix.channel != 'rc' }}
-            type=semver,pattern={{major}}.{{minor}},enable=${{ matrix.channel != 'rc' }}
-            type=ref,event=branch,enable=${{ matrix.channel != 'rc' }}
-            type=sha,enable=${{ matrix.channel != 'rc' }}
+            # Floating tags (main branch pushes only)
+            type=raw,value=latest,enable=${{ matrix.variant == 'full' && matrix.channel != 'rc' && github.ref == 'refs/heads/main' }}
+            type=raw,value=rc,enable=${{ matrix.variant == 'full' && matrix.channel != 'stable' && github.ref == 'refs/heads/main' }}
+            type=raw,value=lite,enable=${{ matrix.variant == 'lite' && matrix.channel != 'rc' && github.ref == 'refs/heads/main' }}
+            type=raw,value=lite-rc,enable=${{ matrix.variant == 'lite' && matrix.channel != 'stable' && github.ref == 'refs/heads/main' }}
+            # Freshell version tags (main branch pushes only)
+            type=raw,value=${{ matrix.freshell_version }},enable=${{ matrix.variant == 'full' && matrix.channel != 'rc' && github.ref == 'refs/heads/main' }}
+            type=raw,value=lite-${{ matrix.freshell_version }},enable=${{ matrix.variant == 'lite' && matrix.channel != 'rc' && github.ref == 'refs/heads/main' }}
+            # SHA tags (all builds including PRs — one per variant×channel)
+            type=sha,enable=${{ matrix.variant == 'full' && matrix.channel != 'rc' }}
+            type=sha,suffix=-rc,enable=${{ matrix.variant == 'full' && matrix.channel != 'stable' }}
+            type=sha,suffix=-lite,enable=${{ matrix.variant == 'lite' && matrix.channel != 'rc' }}
+            type=sha,suffix=-lite-rc,enable=${{ matrix.variant == 'lite' && matrix.channel != 'stable' }}
 
       - name: Build and push
         uses: docker/build-push-action@v7
         with:
           context: .
+          target: ${{ matrix.variant }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.variant }}-${{ matrix.channel }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.variant }}-${{ matrix.channel }}
           build-args: |
             FRESHELL_VERSION=${{ matrix.freshell_version }}
             CACHE_BUST=${{ github.run_id }}-${{ github.run_attempt }}
