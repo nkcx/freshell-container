@@ -92,12 +92,11 @@ ARG CACHE_BUST=""
 # for Docker containers. The native installer writes to ~/.local which conflicts
 # with the persistent /home/coder volume mount and has auto-update issues.
 RUN echo "cache-bust: ${CACHE_BUST}" && npm install -g @openai/codex \
-    && npm install -g @google/gemini-cli \
     && npm install -g @anthropic-ai/claude-code \
     && npm install -g opencode-ai \
     && npm cache clean --force
 
-# Antigravity CLI (Google, Go binary) — replaces Gemini CLI after June 18 2026.
+# Antigravity CLI (Google, Go binary — `agy` command)
 # Uses Google's official installer with --dir to place the binary in /usr/local/bin
 # instead of the default ~/.local/bin (which conflicts with the persistent volume).
 RUN curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- --dir /usr/local/bin
@@ -139,11 +138,10 @@ ENV FRESHELL_ALLOW_NON_MAIN_SERVE=1
 WORKDIR /opt/freshell
 EXPOSE 3001
 
-# Default the Freshell "gemini" provider to launch Antigravity CLI (agy).
-# Override with GEMINI_CMD=gemini to use the legacy Gemini CLI instead.
+# Freshell's provider is still named "gemini" upstream; point it at Antigravity.
 ENV GEMINI_CMD=agy
 
-# Persistent home: Claude/Codex/Gemini/Antigravity/Kimi/OpenCode credentials,
+# Persistent home: Claude/Codex/Antigravity/Kimi/OpenCode credentials,
 # freshell state, SSH keys, git config, project repos, shell history
 VOLUME ["/home/coder"]
 

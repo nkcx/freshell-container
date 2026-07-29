@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-freshell-container packages [Freshell](https://github.com/danshapiro/freshell) (a browser-based terminal multiplexer) into a Docker container with five pre-installed AI coding CLI providers (Claude Code, Codex, Gemini CLI, OpenCode, Kimi CLI). It provides a persistent, browser-accessible dev environment.
+freshell-container packages [Freshell](https://github.com/danshapiro/freshell) (a browser-based terminal multiplexer) into a Docker container with five pre-installed AI coding CLI providers (Claude Code, Codex, Antigravity CLI, OpenCode, Kimi CLI). It provides a persistent, browser-accessible dev environment.
 
 ## Build & Run
 

@@ -18,7 +18,6 @@ Based on `node:22-bookworm-slim` (Debian). Alpine was evaluated but `node-pty`
 - [Codex CLI](https://github.com/openai/codex) (OpenAI) — npm
 - [OpenCode](https://opencode.ai) (SST) — npm
 - [Antigravity CLI](https://github.com/google-antigravity/antigravity-cli) (Google) — official installer (`agy` command)
-- [Gemini CLI](https://github.com/google-gemini/gemini-cli) (Google) — npm (sunset June 18, 2026)
 - [Kimi CLI](https://github.com/MoonshotAI/kimi-cli) (Moonshot AI) — uv (Python 3.13)
 
 \* Anthropic recommends the native installer over npm for Claude Code. However, the
@@ -27,11 +26,8 @@ native installer writes to `~/.local/bin` which conflicts with the persistent
 runtime. The npm package installs to `/usr/local/bin` and is updated via container
 image rebuilds, making it the better fit for Docker environments.
 
-**Gemini CLI → Antigravity CLI transition:** Google is [sunsetting Gemini CLI](https://developers.googleblog.com/an-important-update-transitioning-gemini-cli-to-antigravity-cli/)
-on June 18, 2026. Both CLIs are installed during the transition period. The
-Freshell "gemini" provider defaults to launching `agy` (Antigravity) via the
-`GEMINI_CMD` env var. Set `GEMINI_CMD=gemini` to use the legacy CLI instead.
-Gemini CLI will be removed from the image after the sunset date.
+**Note:** Freshell's provider is still named "gemini" upstream. The `GEMINI_CMD=agy`
+env var redirects it to launch Antigravity CLI.
 
 **Shells:** bash (default), zsh, fish, dash — configurable via `FRESHELL_SHELL` env var
 
@@ -83,11 +79,11 @@ See [`docker-compose.yaml`](docker-compose.yaml) for a production-ready compose 
 | `CLAUDE_CMD` | No | `claude` | Claude Code binary override |
 | `CODEX_CMD` | No | `codex` | Codex CLI binary override |
 | `OPENCODE_CMD` | No | `opencode` | OpenCode binary override |
-| `GEMINI_CMD` | No | `agy` | Gemini provider binary override (default: Antigravity CLI) |
+| `GEMINI_CMD` | No | `agy` | Freshell "gemini" provider binary (points to Antigravity CLI) |
 | `KIMI_CMD` | No | `kimi` | Kimi CLI binary override |
 | `ANTHROPIC_API_KEY` | No | — | Anthropic API key (or authenticate interactively) |
 | `OPENAI_API_KEY` | No | — | OpenAI API key (or authenticate interactively) |
-| `GOOGLE_GENERATIVE_AI_API_KEY` | No | — | Gemini/Antigravity API key (also enables AI tab summaries) |
+| `GOOGLE_GENERATIVE_AI_API_KEY` | No | — | Antigravity API key (also enables AI tab summaries) |
 
 ## Persistent data
 
@@ -212,10 +208,10 @@ API — stable releases go to `latest`, prereleases go to `rc`.
 
 ## Image size
 
-The image is larger than typical containers (~4GB) due to bundling six code
+The image is larger than typical containers (~4GB) due to bundling five code
 providers, each with their own dependency trees. The main contributors:
 
-- npm global packages (Codex, Gemini, OpenCode, Claude Code): ~1.2GB
+- npm global packages (Codex, OpenCode, Claude Code): ~1GB
 - Antigravity CLI (Go binary): ~50MB
 - Freshell + node_modules: ~600MB
 - Kimi CLI + Python 3.13 environment: ~200MB
