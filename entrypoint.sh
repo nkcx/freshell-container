@@ -44,10 +44,14 @@ mkdir -p "${HOME_DIR}/.freshell"
 mkdir -p "${EXTENSIONS_TARGET}"
 
 # --- Lite variant: provider management ---
+# Validation errors in manage-providers.sh must not kill the container —
+# a typo in MANAGE_PROVIDERS should log a warning, not prevent Freshell from starting.
 if [ "$VARIANT" = "lite" ] && [ "${PROVIDERS+set}" = "set" ]; then
-    MODES="${MANAGE_PROVIDERS:-install,uninstall}"
+    MODES="${MANAGE_PROVIDERS:-install,uninstall,update}"
     echo "[${LOG_PREFIX}] Managing providers (modes: ${MODES}, providers: ${PROVIDERS:-<none>})..."
-    manage-providers.sh --modes "$MODES" --providers "$PROVIDERS"
+    if ! manage-providers.sh --modes "$MODES" --providers "$PROVIDERS"; then
+        echo "[${LOG_PREFIX}] WARNING: Provider management failed (exit $?). Freshell will start anyway."
+    fi
 fi
 
 # --- Provider name mapping (agy → gemini for Freshell config) ---
@@ -112,6 +116,8 @@ build_providers_config() {
 # Freshell binds to 127.0.0.1 until the setup wizard sets
 # network.host to 0.0.0.0 and network.configured to true in config.json.
 # In a container, we pre-seed this so the UI is immediately accessible.
+# Config is only written on first boot — never overwritten on subsequent boots,
+# so user changes made through the Freshell UI are preserved.
 
 if [ ! -f "${FRESHELL_CONFIG}" ]; then
     echo "[${LOG_PREFIX}] Creating freshell config with remote access enabled..."
@@ -189,26 +195,12 @@ if [ ! -f "${FRESHELL_CONFIG}" ]; then
 }
 CONFIGEOF
     echo "[${LOG_PREFIX}] Config created — remote access enabled."
-
-elif [ "$VARIANT" = "lite" ] && [ "${PROVIDERS+set}" = "set" ]; then
-    # Subsequent boot: update enabledProviders to match current PROVIDERS
-    ENABLED_PROVIDERS=$(build_enabled_providers)
-    TMP_CONFIG="${FRESHELL_CONFIG}.tmp"
-    jq --argjson ep "$ENABLED_PROVIDERS" '
-      .settings.codingCli.enabledProviders = $ep |
-      reduce ($ep[] | tostring) as $p (.;
-        if .settings.codingCli.providers[$p] == null then
-          .settings.codingCli.providers[$p] = (if $p == "claude" then {"permissionMode":"default"} else {} end)
-        else . end
-      )
-    ' "$FRESHELL_CONFIG" > "$TMP_CONFIG" && mv "$TMP_CONFIG" "$FRESHELL_CONFIG"
-    echo "[${LOG_PREFIX}] Updated enabledProviders in config."
 fi
 
 # --- Lite variant: UPDATE_CRON ---
 if [ "$VARIANT" = "lite" ] && [ -n "${UPDATE_CRON}" ] && [ "${PROVIDERS+set}" = "set" ] && [ -n "$PROVIDERS" ]; then
     CRON_FILE="${HOME_DIR}/.freshell/update-crontab"
-    printf '%s /usr/local/bin/manage-providers.sh --modes update --providers %s\n' \
+    printf '%s /usr/local/bin/manage-providers.sh --modes update --providers "%s"\n' \
         "$UPDATE_CRON" "$PROVIDERS" > "$CRON_FILE"
     supercronic "$CRON_FILE" &
     echo "[${LOG_PREFIX}] Provider update cron started: ${UPDATE_CRON}"

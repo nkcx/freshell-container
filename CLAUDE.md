@@ -62,5 +62,5 @@ CI builds both targets with `--target full` and `--target lite`.
 - Lite image: providers install to `/opt/providers` (separate volume from user data)
 - Freshell config is pre-seeded only on first run (won't overwrite existing config in persistent volume)
 - `AUTH_TOKEN` env var is required for web UI access (min 16 chars)
-- `MANAGE_PROVIDERS` defaults to `install,uninstall` (not `update`) to avoid surprising network-dependent restarts
+- `MANAGE_PROVIDERS` defaults to `install,uninstall,update` for full lifecycle management on every boot
 - `PROVIDERS` unset vs empty: unset skips management, empty string with `uninstall` mode removes all providers

@@ -88,7 +88,7 @@ install_kimi() {
     echo "[${LOG_PREFIX}] Installing Kimi CLI..."
     UV_TOOL_BIN_DIR="$PROVIDERS_BIN" UV_TOOL_DIR="${PROVIDERS_DIR}/uv-tools" \
     UV_CACHE_DIR="$PROVIDERS_CACHE/uv" \
-        uv tool install kimi-cli --python 3.13 2>&1
+        uv tool install --force kimi-cli --python 3.13 2>&1
 }
 
 uninstall_claude() {
@@ -118,7 +118,6 @@ uninstall_kimi() {
         uv tool uninstall kimi-cli 2>&1 || true
 }
 
-# Binary name for each provider
 provider_binary() {
     case "$1" in
         claude)   echo "claude" ;;
@@ -126,6 +125,7 @@ provider_binary() {
         opencode) echo "opencode" ;;
         agy)      echo "agy" ;;
         kimi)     echo "kimi" ;;
+        *)        echo "$1" ;;
     esac
 }
 
@@ -139,12 +139,23 @@ exec 9>"$LOCK_FILE"
 flock 9
 
 FAILURES=0
+JUST_INSTALLED=()
+
+was_just_installed() {
+    local target="$1"
+    for p in "${JUST_INSTALLED[@]}"; do
+        [ "$p" = "$target" ] && return 0
+    done
+    return 1
+}
 
 # Install: add providers in the list that aren't present
 if has_mode "install"; then
     for provider in "${CLEAN_PROVIDERS[@]}"; do
         if ! is_installed "$provider"; then
-            if ! "install_${provider}"; then
+            if "install_${provider}"; then
+                JUST_INSTALLED+=("$provider")
+            else
                 echo "[${LOG_PREFIX}] WARNING: Failed to install $provider" >&2
                 FAILURES=$((FAILURES + 1))
             fi
@@ -155,6 +166,10 @@ fi
 # Update: reinstall all listed providers regardless of presence
 if has_mode "update"; then
     for provider in "${CLEAN_PROVIDERS[@]}"; do
+        if was_just_installed "$provider"; then
+            echo "[${LOG_PREFIX}] Skipping update for $provider (just installed)."
+            continue
+        fi
         if ! "install_${provider}"; then
             echo "[${LOG_PREFIX}] WARNING: Failed to update $provider" >&2
             FAILURES=$((FAILURES + 1))

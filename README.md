@@ -95,7 +95,7 @@ coding CLI providers. Instead, providers are installed at runtime into a separat
 The `PROVIDERS` env var is a comma-separated list of provider names to install:
 `claude`, `codex`, `opencode`, `agy`, `kimi`.
 
-The `MANAGE_PROVIDERS` env var controls what happens at boot (default: `install,uninstall`):
+The `MANAGE_PROVIDERS` env var controls what happens at boot (default: `install,uninstall,update`):
 
 | Mode | Behavior |
 |---|---|
@@ -105,8 +105,8 @@ The `MANAGE_PROVIDERS` env var controls what happens at boot (default: `install,
 
 Examples:
 - `MANAGE_PROVIDERS=install` — only add new providers, never remove or update
-- `MANAGE_PROVIDERS=install,uninstall` — (default) reconcile to match `PROVIDERS` exactly
-- `MANAGE_PROVIDERS=install,uninstall,update` — full reconcile plus update on every boot
+- `MANAGE_PROVIDERS=install,uninstall` — reconcile to match `PROVIDERS` exactly, no updates
+- `MANAGE_PROVIDERS=install,uninstall,update` — (default) full reconcile plus update on every boot
 
 **PROVIDERS semantics:**
 - Not set — provider management is skipped entirely
@@ -126,10 +126,12 @@ This runs `manage-providers.sh --modes update` on the specified schedule using
 
 ### Provider volume
 
-The lite variant installs providers to `/opt/providers`, which should be mounted as
-a separate Docker volume. This separates provider binaries from user data
-(`/home/coder`), allowing you to wipe the provider volume for a clean reinstall
-without losing credentials, SSH keys, or project files.
+The lite variant installs providers to `/opt/providers`, which **must** be mounted as
+a separate Docker volume (`-v freshell-providers:/opt/providers`). Without this
+mount, providers install into the container's writable layer and are lost on
+container recreation. This volume separates provider binaries from user data
+(`/home/coder`), allowing you to wipe it for a clean reinstall without losing
+credentials, SSH keys, or project files.
 
 ## Docker Compose
 
@@ -147,7 +149,7 @@ for both full and lite variants.
 | `ALLOWED_ORIGINS` | No | (auto-detect LAN) | Comma-separated CORS origins |
 | `SKIP_UPDATE_CHECK` | No | `true` | Disable freshell git-based auto-update |
 | `PROVIDERS` | Lite only | — | Comma-separated providers to install: `claude`, `codex`, `opencode`, `agy`, `kimi` |
-| `MANAGE_PROVIDERS` | Lite only | `install,uninstall` | Provider management modes (see above) |
+| `MANAGE_PROVIDERS` | Lite only | `install,uninstall,update` | Provider management modes (see above) |
 | `UPDATE_CRON` | Lite only | — | Cron expression for auto-updating providers (e.g., `0 4 * * *`) |
 | `CLAUDE_CMD` | No | `claude` | Claude Code binary override |
 | `CODEX_CMD` | No | `codex` | Codex CLI binary override |
@@ -156,7 +158,7 @@ for both full and lite variants.
 | `KIMI_CMD` | No | `kimi` | Kimi CLI binary override |
 | `ANTHROPIC_API_KEY` | No | — | Anthropic API key (or authenticate interactively) |
 | `OPENAI_API_KEY` | No | — | OpenAI API key (or authenticate interactively) |
-| `GOOGLE_GENERATIVE_AI_API_KEY` | No | — | Antigravity API key (also enables AI tab summaries) |
+| `GOOGLE_GENERATIVE_AI_API_KEY` | No | — | Gemini API key for Freshell AI tab summaries |
 
 ## Persistent data
 

@@ -3,6 +3,7 @@ name: Build and Publish Container
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
     branches: [main]
   # Rebuild daily to pick up new freshell releases and security patches
@@ -53,22 +54,19 @@ jobs:
             fi
           fi
 
-          # Build matrix: each channel × both variants (full, lite)
+          # One matrix entry per channel — each job builds both full and lite targets
           if [ "$RC_IS_NEWER" = "true" ]; then
             MATRIX=$(jq -nc \
               --arg sv "$STABLE" --arg rv "$RC" \
               '{include:[
-                {channel:"stable", freshell_version:$sv, variant:"full"},
-                {channel:"stable", freshell_version:$sv, variant:"lite"},
-                {channel:"rc",     freshell_version:$rv, variant:"full"},
-                {channel:"rc",     freshell_version:$rv, variant:"lite"}
+                {channel:"stable", freshell_version:$sv},
+                {channel:"rc",     freshell_version:$rv}
               ]}')
           else
             MATRIX=$(jq -nc \
               --arg sv "$STABLE" \
               '{include:[
-                {channel:"stable-and-rc", freshell_version:$sv, variant:"full"},
-                {channel:"stable-and-rc", freshell_version:$sv, variant:"lite"}
+                {channel:"stable-and-rc", freshell_version:$sv}
               ]}')
           fi
 
@@ -100,36 +98,59 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
-        id: meta
+      # --- Full variant ---
+
+      - name: Extract metadata (full)
+        id: meta-full
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            # Floating tags (main branch pushes only)
-            type=raw,value=latest,enable=${{ matrix.variant == 'full' && matrix.channel != 'rc' && github.ref == 'refs/heads/main' }}
-            type=raw,value=rc,enable=${{ matrix.variant == 'full' && matrix.channel != 'stable' && github.ref == 'refs/heads/main' }}
-            type=raw,value=lite,enable=${{ matrix.variant == 'lite' && matrix.channel != 'rc' && github.ref == 'refs/heads/main' }}
-            type=raw,value=lite-rc,enable=${{ matrix.variant == 'lite' && matrix.channel != 'stable' && github.ref == 'refs/heads/main' }}
-            # Freshell version tags (main branch pushes only)
-            type=raw,value=${{ matrix.freshell_version }},enable=${{ matrix.variant == 'full' && matrix.channel != 'rc' && github.ref == 'refs/heads/main' }}
-            type=raw,value=lite-${{ matrix.freshell_version }},enable=${{ matrix.variant == 'lite' && matrix.channel != 'rc' && github.ref == 'refs/heads/main' }}
-            # SHA tags (all builds including PRs — one per variant×channel)
-            type=sha,enable=${{ matrix.variant == 'full' && matrix.channel != 'rc' }}
-            type=sha,suffix=-rc,enable=${{ matrix.variant == 'full' && matrix.channel != 'stable' }}
-            type=sha,suffix=-lite,enable=${{ matrix.variant == 'lite' && matrix.channel != 'rc' }}
-            type=sha,suffix=-lite-rc,enable=${{ matrix.variant == 'lite' && matrix.channel != 'stable' }}
+            type=raw,value=latest,enable=${{ matrix.channel != 'rc' && github.ref == 'refs/heads/main' }}
+            type=raw,value=rc,enable=${{ matrix.channel != 'stable' && github.ref == 'refs/heads/main' }}
+            type=raw,value=${{ matrix.freshell_version }},enable=${{ matrix.channel != 'rc' && github.ref == 'refs/heads/main' }}
+            type=sha,enable=${{ matrix.channel != 'rc' }}
+            type=sha,suffix=-rc,enable=${{ matrix.channel != 'stable' }}
+            type=ref,event=branch,enable=${{ matrix.channel != 'rc' }}
 
-      - name: Build and push
+      - name: Build and push (full)
         uses: docker/build-push-action@v7
         with:
           context: .
-          target: ${{ matrix.variant }}
+          target: full
           push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ matrix.variant }}-${{ matrix.channel }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.variant }}-${{ matrix.channel }}
+          tags: ${{ steps.meta-full.outputs.tags }}
+          labels: ${{ steps.meta-full.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.channel }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.channel }}
           build-args: |
             FRESHELL_VERSION=${{ matrix.freshell_version }}
             CACHE_BUST=${{ github.run_id }}-${{ github.run_attempt }}
+
+      # --- Lite variant (shares cached runtime-base from full build) ---
+
+      - name: Extract metadata (lite)
+        id: meta-lite
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=lite,enable=${{ matrix.channel != 'rc' && github.ref == 'refs/heads/main' }}
+            type=raw,value=lite-rc,enable=${{ matrix.channel != 'stable' && github.ref == 'refs/heads/main' }}
+            type=raw,value=lite-${{ matrix.freshell_version }},enable=${{ matrix.channel != 'rc' && github.ref == 'refs/heads/main' }}
+            type=sha,suffix=-lite,enable=${{ matrix.channel != 'rc' }}
+            type=sha,suffix=-lite-rc,enable=${{ matrix.channel != 'stable' }}
+            type=ref,event=branch,suffix=-lite,enable=${{ matrix.channel != 'rc' }}
+
+      - name: Build and push (lite)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: lite
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-lite.outputs.tags }}
+          labels: ${{ steps.meta-lite.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.channel }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.channel }}
+          build-args: |
+            FRESHELL_VERSION=${{ matrix.freshell_version }}
