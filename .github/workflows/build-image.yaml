@@ -121,7 +121,11 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta-full.outputs.tags }}
           labels: ${{ steps.meta-full.outputs.labels }}
-          cache-from: type=gha,scope=${{ matrix.channel }}
+          cache-from: |
+            type=gha,scope=${{ matrix.channel }}
+            type=gha,scope=stable
+            type=gha,scope=stable-and-rc
+            type=gha,scope=rc
           cache-to: type=gha,mode=max,scope=${{ matrix.channel }}
           build-args: |
             FRESHELL_VERSION=${{ matrix.freshell_version }}
@@ -150,7 +154,11 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta-lite.outputs.tags }}
           labels: ${{ steps.meta-lite.outputs.labels }}
-          cache-from: type=gha,scope=${{ matrix.channel }}
+          cache-from: |
+            type=gha,scope=${{ matrix.channel }}
+            type=gha,scope=stable
+            type=gha,scope=stable-and-rc
+            type=gha,scope=rc
           cache-to: type=gha,mode=max,scope=${{ matrix.channel }}
           build-args: |
             FRESHELL_VERSION=${{ matrix.freshell_version }}
