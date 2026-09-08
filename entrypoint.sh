@@ -29,7 +29,10 @@ if [ -n "${EXTRA_PACKAGES}" ]; then
     PACKAGES=$(echo "${EXTRA_PACKAGES}" | tr ',' ' ')
     echo "[${LOG_PREFIX}] Installing extra packages: ${PACKAGES}"
     if sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends ${PACKAGES}; then
-        sudo rm -rf /var/lib/apt/lists/*
+        # Cleanup runs via a dedicated root helper: the coder sudoers rule only
+        # grants apt-get, and a failure here must never abort startup.
+        sudo /usr/local/sbin/freshell-apt-cleanup || \
+            echo "[${LOG_PREFIX}] WARNING: apt cleanup failed (non-fatal)."
     else
         echo "[${LOG_PREFIX}] WARNING: Extra package installation failed. Freshell will start anyway."
     fi

@@ -153,6 +153,7 @@ for both full and lite variants.
 | `MANAGE_PROVIDERS` | Lite only | `install,uninstall,update` | Provider management modes (see above) |
 | `UPDATE_CRON` | Lite only | — | Cron expression for auto-updating providers (e.g., `0 4 * * *`) |
 | `SKILLS` | No | — | Comma-separated skill sources to install on boot (e.g., `vercel-labs/agent-skills`) |
+| `EXTRA_PACKAGES` | No | — | Comma- or space-separated apt packages to install on boot (e.g., `ffmpeg,imagemagick`) |
 | `CLAUDE_CMD` | No | `claude` | Claude Code binary override |
 | `CODEX_CMD` | No | `codex` | Codex CLI binary override |
 | `OPENCODE_CMD` | No | `opencode` | OpenCode binary override |
@@ -185,6 +186,47 @@ volume, extensions installed at runtime survive container updates.
 To inject extensions from an external volume at startup, mount a read-only volume at
 `/extensions`. The entrypoint copies any files found there into `~/.freshell/extensions/`
 (without overwriting existing files).
+
+## Extra packages
+
+The image ships with a general-purpose dev toolchain, but some workloads need
+more — headless Chrome libraries for Playwright, media tools, database clients.
+Set `EXTRA_PACKAGES` to a comma- or space-separated list of Debian packages and
+the entrypoint installs them on boot:
+
+```yaml
+environment:
+  EXTRA_PACKAGES: ffmpeg,imagemagick,postgresql-client
+```
+
+Packages come from the Debian bookworm repositories and are installed with
+`--no-install-recommends`.
+
+**These packages are not persistent.** They land in the container filesystem,
+not in the `/home/coder` volume, so they are lost whenever the container is
+recreated (an image update, a `docker compose down`). The entrypoint reinstalls
+them on every boot, which adds startup time proportional to the list — already
+present packages are a fast no-op, but the `apt-get update` still runs. For a
+large or slow-changing set of packages, bake them into a derived image instead:
+
+```dockerfile
+FROM ghcr.io/nkcx/freshell-container:latest
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg imagemagick \
+    && rm -rf /var/lib/apt/lists/*
+USER coder
+```
+
+Installation failures are non-fatal — a bad package name logs a warning and
+Freshell starts anyway. Check the container logs if an expected package is
+missing.
+
+The `coder` user has passwordless `sudo` for exactly two commands — `apt-get`
+and the entrypoint's apt cache cleanup helper — so this mechanism does not give
+processes inside the container general root access. Note that `sudo apt-get` is
+itself enough to install arbitrary Debian packages, which is a meaningful
+privilege for anything running as `coder`, including AI agents.
 
 ## Agent skills
 

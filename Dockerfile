@@ -85,7 +85,10 @@ RUN npm install -g skills \
 RUN userdel -r node \
     && groupadd -g 1000 coder \
     && useradd -m -u 1000 -g coder -s /bin/bash coder \
-    && echo "coder ALL=(root) NOPASSWD: /usr/bin/apt-get" > /etc/sudoers.d/coder-apt \
+    && printf '%s\n' \
+        "coder ALL=(root) NOPASSWD: /usr/bin/apt-get" \
+        "coder ALL=(root) NOPASSWD: /usr/local/sbin/freshell-apt-cleanup" \
+        > /etc/sudoers.d/coder-apt \
     && chmod 440 /etc/sudoers.d/coder-apt
 
 # Copy freshell from build stage
@@ -95,7 +98,10 @@ RUN chown -R coder:coder /opt/freshell
 # Install entrypoint and provider management scripts
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY manage-providers.sh /usr/local/bin/manage-providers.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/manage-providers.sh
+COPY apt-cleanup.sh /usr/local/sbin/freshell-apt-cleanup
+RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/manage-providers.sh \
+    && chown root:root /usr/local/sbin/freshell-apt-cleanup \
+    && chmod 755 /usr/local/sbin/freshell-apt-cleanup
 
 # Provider volume directory (used by lite variant, harmless for full)
 RUN mkdir -p /opt/providers/bin && chown -R coder:coder /opt/providers
