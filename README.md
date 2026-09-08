@@ -229,6 +229,23 @@ skills find "code review"
 
 See [skills.sh](https://skills.sh) for the full skill directory.
 
+### Security warning
+
+**Skills are agent instructions sourced from third-party repositories.** A skill
+can direct an AI agent to run arbitrary commands, modify files, install packages,
+or exfiltrate data — with whatever permissions the agent has. Listing on a
+marketplace or directory does not imply a security review. Before installing:
+
+- Read the skill's `SKILL.md` to understand what instructions it gives agents
+- Prefer skills from authors and organizations you trust
+- Review installed skills with `skills list` and inspect their contents
+- Be especially cautious with skills that ask agents to run shell commands,
+  access credentials, or make network requests
+
+This applies equally to skills installed manually and those auto-installed via
+the `SKILLS` env var — the `--yes` flag skips interactive review, so vet your
+sources before adding them to your compose file.
+
 ## Docker CLI support
 
 The container ships with the Docker CLI but no daemon. To use `docker` commands
