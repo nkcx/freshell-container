@@ -1,5 +1,8 @@
 # freshell-container
 
+[![CI](https://img.shields.io/github/actions/workflow/status/nkcx/freshell-container/build-image.yaml?branch=main&label=CI)](https://github.com/nkcx/freshell-container/actions/workflows/build-image.yaml)
+[![GHCR](https://img.shields.io/badge/GHCR-freshell--container-blue?logo=github)](https://ghcr.io/nkcx/freshell-container)
+
 Docker container packaging [Freshell](https://github.com/danshapiro/freshell)
 with all supported coding CLI providers and common development tools. Designed as a
 persistent, browser-accessible, multi-device development environment.
