@@ -36,7 +36,7 @@ FROM node:22-bookworm-slim AS runtime-base
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential python3 python3-dev python3-venv python3-pip \
     git openssh-client tmux ripgrep jq curl wget ca-certificates \
-    bash zsh fish dash \
+    bash zsh fish dash sudo \
     iputils-ping dnsutils traceroute netcat-openbsd \
     lsof htop less file tree unzip vim-tiny nano \
     rsync gnupg sqlite3 postgresql-client mariadb-client bash-completion \
@@ -84,7 +84,9 @@ RUN npm install -g skills \
 # Replace the built-in 'node' user with our own at UID 1000
 RUN userdel -r node \
     && groupadd -g 1000 coder \
-    && useradd -m -u 1000 -g coder -s /bin/bash coder
+    && useradd -m -u 1000 -g coder -s /bin/bash coder \
+    && echo "coder ALL=(root) NOPASSWD: /usr/bin/apt-get" > /etc/sudoers.d/coder-apt \
+    && chmod 440 /etc/sudoers.d/coder-apt
 
 # Copy freshell from build stage
 COPY --from=build /opt/freshell /opt/freshell

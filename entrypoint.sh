@@ -21,6 +21,20 @@ if [ -n "${FRESHELL_SHELL}" ]; then
     fi
 fi
 
+# --- Extra packages ---
+# EXTRA_PACKAGES lets users install additional apt packages at container startup.
+# Comma or space-separated list of package names.
+if [ -n "${EXTRA_PACKAGES}" ]; then
+    # Normalize commas to spaces
+    PACKAGES=$(echo "${EXTRA_PACKAGES}" | tr ',' ' ')
+    echo "[${LOG_PREFIX}] Installing extra packages: ${PACKAGES}"
+    if sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends ${PACKAGES}; then
+        sudo rm -rf /var/lib/apt/lists/*
+    else
+        echo "[${LOG_PREFIX}] WARNING: Extra package installation failed. Freshell will start anyway."
+    fi
+fi
+
 # --- First-run initialization ---
 # When the /home/coder volume is empty (first deploy), seed it with
 # the defaults baked into the image. On subsequent starts, the volume

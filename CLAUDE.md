@@ -40,6 +40,7 @@ CI builds both targets with `--target full` and `--target lite`.
 - First-run initialization: seeds `/home/coder` with skel files, SSH dir, projects dir
 - **Lite variant**: runs `manage-providers.sh` to reconcile providers based on `PROVIDERS` and `MANAGE_PROVIDERS` env vars
 - **Skills**: when `SKILLS` is set, pre-creates agent config directories for auto-detection then runs `skills add <source> --yes --global` for each comma-separated source
+- **Extra packages**: when `EXTRA_PACKAGES` is set, installs additional apt packages via `sudo apt-get` (coder has scoped sudoers for apt-get only)
 - Pre-creates `~/.freshell/config.json` with remote access enabled; lite variant dynamically sets `enabledProviders` from `PROVIDERS`; subsequent boots update the config to match
 - Sets up `UPDATE_CRON` via supercronic for scheduled provider updates (lite only)
 - Copies extension files from `/extensions` volume mount if present

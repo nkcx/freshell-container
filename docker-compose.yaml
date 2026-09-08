@@ -14,6 +14,8 @@ services:
       - PORT=3001
       # Comma-separated allowed CORS origins (auto-detected from LAN if unset)
       #- ALLOWED_ORIGINS=https://freshell.example.com
+      # --- Extra apt packages (installed at container startup) ---
+      #- EXTRA_PACKAGES=redis-tools,awscli
       # --- Agent skills (install from GitHub repos on boot) ---
       #- SKILLS=vercel-labs/agent-skills
       # --- Code provider command overrides (optional) ---
@@ -50,6 +52,8 @@ services:
   #     #- MANAGE_PROVIDERS=install,uninstall
   #     # Auto-update providers on a schedule (cron expression)
   #     #- UPDATE_CRON=0 4 * * *
+  #     # Extra apt packages (installed at container startup)
+  #     #- EXTRA_PACKAGES=redis-tools,awscli
   #     # Agent skills (install from GitHub repos on boot)
   #     #- SKILLS=vercel-labs/agent-skills
   #     #- ANTHROPIC_API_KEY=
