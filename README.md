@@ -44,6 +44,7 @@ env var redirects it to launch Antigravity CLI.
 - **Archives:** tar, gzip, unzip
 - **Databases:** sqlite3, psql (postgresql-client), mysql (mariadb-client)
 - **Containers:** docker (CLI only — requires socket mount, see below)
+- **Agent skills:** [skills CLI](https://github.com/vercel-labs/skills) — install and manage reusable skills for coding agents
 - **Misc:** gnupg, bash-completion
 
 ## Quick start
@@ -151,6 +152,7 @@ for both full and lite variants.
 | `PROVIDERS` | Lite only | — | Comma-separated providers to install: `claude`, `codex`, `opencode`, `agy`, `kimi` |
 | `MANAGE_PROVIDERS` | Lite only | `install,uninstall,update` | Provider management modes (see above) |
 | `UPDATE_CRON` | Lite only | — | Cron expression for auto-updating providers (e.g., `0 4 * * *`) |
+| `SKILLS` | No | — | Comma-separated skill sources to install on boot (e.g., `vercel-labs/agent-skills`) |
 | `CLAUDE_CMD` | No | `claude` | Claude Code binary override |
 | `CODEX_CMD` | No | `codex` | Codex CLI binary override |
 | `OPENCODE_CMD` | No | `opencode` | OpenCode binary override |
@@ -183,6 +185,49 @@ volume, extensions installed at runtime survive container updates.
 To inject extensions from an external volume at startup, mount a read-only volume at
 `/extensions`. The entrypoint copies any files found there into `~/.freshell/extensions/`
 (without overwriting existing files).
+
+## Agent skills
+
+The container ships with the [skills CLI](https://github.com/vercel-labs/skills)
+pre-installed, enabling reusable instruction sets for AI coding agents. Skills
+extend agent capabilities with specialized behaviors — release note generation,
+PR conventions, code review checklists, and more.
+
+### Auto-install on boot
+
+Set the `SKILLS` environment variable to a comma-separated list of skill sources:
+
+```bash
+-e SKILLS=vercel-labs/agent-skills
+```
+
+On each boot, the entrypoint runs `skills add <source> --yes --global` for each
+source, installing all discovered skills to every detected agent's global
+directory (`~/.claude/skills/`, `~/.codex/skills/`, etc.). Skills persist in the
+`/home/coder` volume.
+
+### Manual usage
+
+From any terminal inside the container:
+
+```bash
+# Browse and install skills from a repo
+skills add vercel-labs/agent-skills
+
+# Install a specific skill for a specific agent
+skills add vercel-labs/agent-skills --skill frontend-design -a claude-code
+
+# Use a skill without installing (piped to an agent)
+skills use vercel-labs/agent-skills@web-design-guidelines | claude
+
+# List installed skills
+skills list
+
+# Search the skills directory
+skills find "code review"
+```
+
+See [skills.sh](https://skills.sh) for the full skill directory.
 
 ## Docker CLI support
 

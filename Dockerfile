@@ -77,6 +77,10 @@ RUN ARCH=$(dpkg --print-architecture) \
 RUN pip install --break-system-packages uv \
     && rm -rf /root/.cache/pip
 
+# skills CLI — agent skill manager (skills.sh)
+RUN npm install -g skills \
+    && npm cache clean --force
+
 # Replace the built-in 'node' user with our own at UID 1000
 RUN userdel -r node \
     && groupadd -g 1000 coder \

@@ -54,6 +54,46 @@ if [ "$VARIANT" = "lite" ] && [ "${PROVIDERS+set}" = "set" ]; then
     fi
 fi
 
+# --- Skills installation ---
+# When SKILLS is set, install agent skills from the listed repos on boot.
+# Sources are comma-separated GitHub shorthand (owner/repo) or full Git URLs.
+# Skills install globally to agent config directories (~/.claude/skills/, etc.)
+# and persist in the /home/coder volume.
+
+if [ -n "${SKILLS}" ]; then
+    # Pre-create agent config directories so the skills CLI can detect them.
+    # Without these, agents that haven't been run yet are invisible to auto-detection.
+    ensure_agent_dir() {
+        case "$1" in
+            claude)   mkdir -p "${HOME_DIR}/.claude" ;;
+            codex)    mkdir -p "${HOME_DIR}/.codex" ;;
+            opencode) mkdir -p "${HOME_DIR}/.config/opencode" ;;
+        esac
+    }
+
+    if [ "$VARIANT" = "full" ]; then
+        for agent in claude codex opencode; do
+            ensure_agent_dir "$agent"
+        done
+    elif [ -n "$PROVIDERS" ]; then
+        IFS=',' read -ra skill_provs <<< "$PROVIDERS"
+        for sp in "${skill_provs[@]}"; do
+            sp=$(echo "$sp" | tr -d '[:space:]')
+            ensure_agent_dir "$sp"
+        done
+    fi
+
+    IFS=',' read -ra SKILL_SOURCES <<< "$SKILLS"
+    for source in "${SKILL_SOURCES[@]}"; do
+        source=$(echo "$source" | tr -d '[:space:]')
+        [ -z "$source" ] && continue
+        echo "[${LOG_PREFIX}] Installing skills from ${source}..."
+        if ! DISABLE_TELEMETRY=1 skills add "$source" --yes --global 2>&1; then
+            echo "[${LOG_PREFIX}] WARNING: Failed to install skills from ${source}"
+        fi
+    done
+fi
+
 # --- Provider name mapping (agy → gemini for Freshell config) ---
 map_provider_name() {
     case "$1" in
