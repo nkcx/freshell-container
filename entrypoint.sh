@@ -60,6 +60,15 @@ mkdir -p "${HOME_DIR}/projects"
 mkdir -p "${HOME_DIR}/.freshell"
 mkdir -p "${EXTENSIONS_TARGET}"
 
+# --- Tabs registry garbage collection ---
+# Freshell never deletes superseded tabs-registry objects, so
+# ~/.freshell/tabs-registry/v1/objects grows without bound (millions of files).
+# Freshell isn't running yet, so pruning unreferenced objects here is safe.
+# Old objects are deleted in the background. Set TABS_REGISTRY_GC=false to skip.
+if [ "${TABS_REGISTRY_GC:-true}" != "false" ]; then
+    tabs-registry-gc.sh || echo "[${LOG_PREFIX}] WARNING: tabs registry GC failed (non-fatal)."
+fi
+
 # --- Lite variant: provider management ---
 # Validation errors in manage-providers.sh must not kill the container —
 # a typo in MANAGE_PROVIDERS should log a warning, not prevent Freshell from starting.

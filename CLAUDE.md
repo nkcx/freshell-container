@@ -41,6 +41,7 @@ CI builds both targets with `--target full` and `--target lite`.
 - **Lite variant**: runs `manage-providers.sh` to reconcile providers based on `PROVIDERS` and `MANAGE_PROVIDERS` env vars
 - **Skills**: when `SKILLS` is set, pre-creates agent config directories for auto-detection then runs `skills add <source> --yes --global` for each comma-separated source
 - **Extra packages**: when `EXTRA_PACKAGES` is set, installs additional apt packages via `sudo apt-get`, then reclaims cache via `sudo /usr/local/sbin/freshell-apt-cleanup` (coder has scoped sudoers for exactly those two commands; cleanup failures are non-fatal)
+- **Tabs registry GC**: runs `tabs-registry-gc.sh` before Freshell starts (unless `TABS_REGISTRY_GC=false`) to prune unreferenced objects from `~/.freshell/tabs-registry/v1/objects/`, which upstream never deletes; old objects are removed in the background
 - Pre-creates `~/.freshell/config.json` with remote access enabled; lite variant dynamically sets `enabledProviders` from `PROVIDERS`; subsequent boots update the config to match
 - Sets up `UPDATE_CRON` via supercronic for scheduled provider updates (lite only)
 - Copies extension files from `/extensions` volume mount if present

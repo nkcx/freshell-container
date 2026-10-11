@@ -98,8 +98,9 @@ RUN chown -R coder:coder /opt/freshell
 # Install entrypoint and provider management scripts
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY manage-providers.sh /usr/local/bin/manage-providers.sh
+COPY tabs-registry-gc.sh /usr/local/bin/tabs-registry-gc.sh
 COPY apt-cleanup.sh /usr/local/sbin/freshell-apt-cleanup
-RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/manage-providers.sh \
+RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/manage-providers.sh /usr/local/bin/tabs-registry-gc.sh \
     && chown root:root /usr/local/sbin/freshell-apt-cleanup \
     && chmod 755 /usr/local/sbin/freshell-apt-cleanup
 

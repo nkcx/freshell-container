@@ -157,6 +157,7 @@ for both full and lite variants.
 | `UPDATE_CRON` | Lite only | — | Cron expression for auto-updating providers (e.g., `0 4 * * *`) |
 | `SKILLS` | No | — | Comma-separated skill sources to install on boot (e.g., `vercel-labs/agent-skills`) |
 | `EXTRA_PACKAGES` | No | — | Comma- or space-separated apt packages to install on boot (e.g., `ffmpeg,imagemagick`) |
+| `TABS_REGISTRY_GC` | No | `true` | Prune unreferenced Freshell tabs-registry objects on boot (see Known issues); `false` to skip |
 | `CLAUDE_CMD` | No | `claude` | Claude Code binary override |
 | `CODEX_CMD` | No | `codex` | Codex CLI binary override |
 | `OPENCODE_CMD` | No | `opencode` | OpenCode binary override |
@@ -436,6 +437,13 @@ with tabs open on other connected browsers.
 - **Claude Code auto-update** is disabled by using the npm package instead of the
   native installer. Updates come via container image rebuilds (full) or
   `UPDATE_CRON` / manual `manage-providers.sh --modes update` (lite).
+- **Freshell tabs registry grows without bound.** Freshell never deletes superseded
+  objects in `~/.freshell/tabs-registry/v1/objects/`, so a long-lived home volume can
+  collect millions of small files and tens of GB. On every boot the entrypoint runs
+  `tabs-registry-gc.sh`, which keeps only the objects the current manifest references
+  (open tabs and closed-tab history are unaffected) and deletes the rest in the
+  background. It is safe to run by hand while Freshell is running:
+  `tabs-registry-gc.sh --foreground`. Disable with `TABS_REGISTRY_GC=false`.
 
 ## License
 
