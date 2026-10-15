@@ -1,0 +1,24 @@
+Stop xterm.js from treating LF as CR+LF.
+
+Freshell creates its terminals with convertEol: true, which real terminals
+never do. Programs that put the tty in classic raw mode (-opost) emit a bare
+LF followed by relative cursor moves (e.g. "\n\e[34D") and rely on LF keeping
+the column. Antigravity CLI (agy) draws this way, so its logo, prompt and
+completion list land too far left (danshapiro/freshell#790).
+
+In cooked mode the kernel's ONLCR already turns LF into CR+LF, and Node's
+raw mode keeps ONLCR on, so ordinary shells and Node-based CLIs are unaffected.
+
+diff --git a/src/components/TerminalView.tsx b/src/components/TerminalView.tsx
+index d86c776..d7ba4d6 100644
+--- a/src/components/TerminalView.tsx
++++ b/src/components/TerminalView.tsx
+@@ -988,7 +988,7 @@ export default function TerminalView({ tabId, paneId, paneContent, hidden }: Ter
+     const resolvedTheme = getTerminalTheme(settings.terminal.theme, settings.theme)
+     const term = new Terminal({
+       allowProposedApi: true,
+-      convertEol: true,
++      convertEol: false,
+       cursorBlink: settings.terminal.cursorBlink,
+       fontSize: settings.terminal.fontSize,
+       fontFamily: resolveTerminalFontFamily(settings.terminal.fontFamily),

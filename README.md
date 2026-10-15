@@ -440,20 +440,25 @@ container carries its own fixes in [`patches/`](patches/). Freshell rebuilds fro
 source on every start, and before that build the entrypoint resets
 `/opt/freshell` to the pristine release and applies the patches named in
 `FRESHELL_PATCHES`. Patches are opt-in: unset applies none, `all` applies every
-patch. Changing the list takes effect on the next restart.
+patch available for that Freshell version. Changing the list takes effect on the
+next restart.
 
-| Patch | Fixes |
-|---|---|
-| `convert-eol` | Antigravity CLI (`agy`) draws its logo, prompt and menus too far left ([freshell#790](https://github.com/danshapiro/freshell/issues/790)). Freshell's terminal turned every line feed into CR+LF, which real terminals don't do. |
-| `image-paste` | Pasting a clipboard image (e.g. a screenshot) into a terminal does nothing. With the patch, the image is uploaded to `~/.freshell/attachments` and its path is pasted, which Claude Code and Codex attach as an image. Clipboards that also contain text paste as text. |
+Patches are kept per Freshell version (`patches/<tag>/`), because the stable
+(`latest`) and `rc` images package different releases.
+
+| Patch | Versions | Fixes |
+|---|---|---|
+| `convert-eol` | v0.7.0, v0.7.5 | Antigravity CLI (`agy`) draws its logo, prompt and menus too far left ([freshell#790](https://github.com/danshapiro/freshell/issues/790)). Freshell's terminal turned every line feed into CR+LF, which real terminals don't do. |
+| `image-paste` | v0.7.5 | Pasting a clipboard image (e.g. a screenshot) into a terminal does nothing. With the patch, the image is uploaded to `~/.freshell/attachments` and its path is pasted, which Claude Code and Codex attach as an image. Clipboards that also contain text paste as text. |
 
 ```yaml
 environment:
   FRESHELL_PATCHES: convert-eol,image-paste   # or "all"
 ```
 
-A patch that doesn't apply is skipped with a warning in the container log. The
-image build checks that every patch applies to the Freshell version it packages.
+A patch that isn't available for the running version, or doesn't apply, is
+skipped with a warning in the container log. The image build checks that every
+patch for the Freshell version it packages still applies.
 
 ## Known issues
 

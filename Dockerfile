@@ -28,10 +28,13 @@ RUN if [ -n "${FRESHELL_VERSION}" ]; then \
     && npm ci \
     && npm run build
 
-# Fail the image build if a container patch no longer applies to this tag.
+# Fail the image build if a container patch for this tag no longer applies.
+# Patches are per Freshell version (patches/<tag>/); a tag without any is fine.
 COPY patches /tmp/freshell-patches
-RUN for p in /tmp/freshell-patches/*.patch; do \
-      git apply --check "$p" || { echo "Patch $(basename "$p") does not apply"; exit 1; }; \
+RUN V=$(git describe --tags --exact-match); \
+    for p in /tmp/freshell-patches/"$V"/*.patch; do \
+      [ -e "$p" ] || continue; \
+      git apply --check "$p" || { echo "Patch $V/$(basename "$p") does not apply"; exit 1; }; \
     done
 
 # --- Shared runtime base ---
