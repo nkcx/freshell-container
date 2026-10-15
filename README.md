@@ -157,6 +157,7 @@ for both full and lite variants.
 | `UPDATE_CRON` | Lite only | — | Cron expression for auto-updating providers (e.g., `0 4 * * *`) |
 | `SKILLS` | No | — | Comma-separated skill sources to install on boot (e.g., `vercel-labs/agent-skills`) |
 | `EXTRA_PACKAGES` | No | — | Comma- or space-separated apt packages to install on boot (e.g., `ffmpeg,imagemagick`) |
+| `FRESHELL_PATCHES` | No | — | Opt-in Freshell patches to apply on boot: comma-separated names or `all` (see [Freshell patches](#freshell-patches)) |
 | `TABS_REGISTRY_GC` | No | `true` | Prune unreferenced Freshell tabs-registry objects on boot (see Known issues); `false` to skip |
 | `CLAUDE_CMD` | No | `claude` | Claude Code binary override |
 | `CODEX_CMD` | No | `codex` | Codex CLI binary override |
@@ -431,6 +432,27 @@ appear in every browser's sidebar. Only the "open tabs" state is per-device.
 
 If you want to see tabs from other devices, the sidebar shows a "remote" section
 with tabs open on other connected browsers.
+
+## Freshell patches
+
+Freshell v0.7.x is no longer being patched upstream while it is rewritten, so the
+container carries its own fixes in [`patches/`](patches/). Freshell rebuilds from
+source on every start, and before that build the entrypoint resets
+`/opt/freshell` to the pristine release and applies the patches named in
+`FRESHELL_PATCHES`. Patches are opt-in: unset applies none, `all` applies every
+patch. Changing the list takes effect on the next restart.
+
+| Patch | Fixes |
+|---|---|
+| `convert-eol` | Antigravity CLI (`agy`) draws its logo, prompt and menus too far left ([freshell#790](https://github.com/danshapiro/freshell/issues/790)). Freshell's terminal turned every line feed into CR+LF, which real terminals don't do. |
+
+```yaml
+environment:
+  FRESHELL_PATCHES: convert-eol   # or "all"
+```
+
+A patch that doesn't apply is skipped with a warning in the container log. The
+image build checks that every patch applies to the Freshell version it packages.
 
 ## Known issues
 

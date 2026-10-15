@@ -69,6 +69,12 @@ if [ "${TABS_REGISTRY_GC:-true}" != "false" ]; then
     tabs-registry-gc.sh || echo "[${LOG_PREFIX}] WARNING: tabs registry GC failed (non-fatal)."
 fi
 
+# --- Freshell patches ---
+# Patches in /opt/freshell-patches fix upstream bugs; FRESHELL_PATCHES selects
+# which ones (opt-in; unset = none). They take effect in the rebuild `npm run serve`
+# does before starting Freshell.
+apply-patches.sh || echo "[${LOG_PREFIX}] WARNING: Freshell patching failed (non-fatal)."
+
 # --- Lite variant: provider management ---
 # Validation errors in manage-providers.sh must not kill the container —
 # a typo in MANAGE_PROVIDERS should log a warning, not prevent Freshell from starting.

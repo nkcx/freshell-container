@@ -28,6 +28,12 @@ RUN if [ -n "${FRESHELL_VERSION}" ]; then \
     && npm ci \
     && npm run build
 
+# Fail the image build if a container patch no longer applies to this tag.
+COPY patches /tmp/freshell-patches
+RUN for p in /tmp/freshell-patches/*.patch; do \
+      git apply --check "$p" || { echo "Patch $(basename "$p") does not apply"; exit 1; }; \
+    done
+
 # --- Shared runtime base ---
 FROM node:22-bookworm-slim AS runtime-base
 
@@ -99,8 +105,11 @@ RUN chown -R coder:coder /opt/freshell
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY manage-providers.sh /usr/local/bin/manage-providers.sh
 COPY tabs-registry-gc.sh /usr/local/bin/tabs-registry-gc.sh
+COPY apply-patches.sh /usr/local/bin/apply-patches.sh
+COPY patches /opt/freshell-patches
 COPY apt-cleanup.sh /usr/local/sbin/freshell-apt-cleanup
 RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/manage-providers.sh /usr/local/bin/tabs-registry-gc.sh \
+       /usr/local/bin/apply-patches.sh \
     && chown root:root /usr/local/sbin/freshell-apt-cleanup \
     && chmod 755 /usr/local/sbin/freshell-apt-cleanup
 
