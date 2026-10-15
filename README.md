@@ -445,10 +445,11 @@ patch. Changing the list takes effect on the next restart.
 | Patch | Fixes |
 |---|---|
 | `convert-eol` | Antigravity CLI (`agy`) draws its logo, prompt and menus too far left ([freshell#790](https://github.com/danshapiro/freshell/issues/790)). Freshell's terminal turned every line feed into CR+LF, which real terminals don't do. |
+| `image-paste` | Pasting a clipboard image (e.g. a screenshot) into a terminal does nothing. With the patch, the image is uploaded to `~/.freshell/attachments` and its path is pasted, which Claude Code and Codex attach as an image. Clipboards that also contain text paste as text. |
 
 ```yaml
 environment:
-  FRESHELL_PATCHES: convert-eol   # or "all"
+  FRESHELL_PATCHES: convert-eol,image-paste   # or "all"
 ```
 
 A patch that doesn't apply is skipped with a warning in the container log. The

@@ -1,0 +1,118 @@
+Paste clipboard images into terminals as uploaded file paths.
+
+A browser terminal can't hand a clipboard image to a CLI: Claude Code and
+Codex read images from the clipboard of the machine they run on, and inside
+the container there is none. This catches paste events whose clipboard holds
+only images, uploads each one through Freshell's existing authenticated
+attachments endpoint (POST /api/fresh-agent/attachments, saved under
+~/.freshell/attachments), and pastes the saved path(s) as a bracketed paste,
+which Claude Code and Codex attach as images. Clipboards that also carry text
+paste as text, unchanged.
+
+diff --git a/src/components/TerminalView.tsx b/src/components/TerminalView.tsx
+index e2c1249..9d73917 100644
+--- a/src/components/TerminalView.tsx
++++ b/src/components/TerminalView.tsx
+@@ -49,6 +49,7 @@ import {
+   type TerminalFreshRecoveryIntent,
+ } from '@/lib/terminal-restore'
+ import { isTerminalPasteShortcut } from '@/lib/terminal-input-policy'
++import { registerTerminalImagePaste } from '@/lib/terminal-image-paste'
+ import { terminalFollowsOscTitle } from '@/lib/terminal-title-policy'
+ import {
+   clearTerminalCursor,
+@@ -1814,6 +1815,7 @@ function TerminalView({ tabId, paneId, paneContent, hidden }: TerminalViewProps)
+ 
+     term.open(containerRef.current)
+     const requestModeBypass = registerTerminalRequestModeBypass(term, sendInput, { terminalInstanceId })
++    const imagePaste = registerTerminalImagePaste(containerRef.current, (text) => term.paste(text))
+     term.attachCustomWheelEventHandler((event) => {
+       const lines = event.deltaY < 0 ? -1 : event.deltaY > 0 ? 1 : 0
+       if (!translateScrollLinesToInput(term, lines)) {
+@@ -2084,6 +2086,7 @@ function TerminalView({ tabId, paneId, paneContent, hidden }: TerminalViewProps)
+     return () => {
+       clearQuarantineRepair()
+       requestModeBypass.dispose()
++      imagePaste.dispose()
+       filePathLinkDisposable?.dispose()
+       urlLinkDisposable?.dispose()
+       clearHoveredUrl(paneId)
+diff --git a/src/lib/terminal-image-paste.ts b/src/lib/terminal-image-paste.ts
+new file mode 100644
+index 0000000..df425de
+--- /dev/null
++++ b/src/lib/terminal-image-paste.ts
+@@ -0,0 +1,73 @@
++import { getAuthToken } from '@/lib/auth'
++import { createLogger } from '@/lib/client-logger'
++
++const log = createLogger('TerminalImagePaste')
++
++const EXTENSIONS: Record<string, string> = {
++  'image/png': 'png',
++  'image/jpeg': 'jpg',
++  'image/gif': 'gif',
++  'image/webp': 'webp',
++  'image/bmp': 'bmp',
++  'image/svg+xml': 'svg',
++}
++
++/**
++ * Same raw-binary upload as FreshAgentComposer's uploadAttachment: the server
++ * saves the file under ~/.freshell/attachments and returns its path.
++ */
++async function uploadImage(file: globalThis.File, name: string): Promise<string> {
++  const headers = new Headers({ 'Content-Type': 'application/octet-stream' })
++  const token = getAuthToken()
++  if (token) headers.set('x-auth-token', token)
++  const res = await fetch(`/api/fresh-agent/attachments?name=${encodeURIComponent(name)}`, {
++    method: 'POST',
++    body: file,
++    headers,
++  })
++  if (!res.ok) {
++    const data = await res.json().catch(() => null) as { error?: string; message?: string } | null
++    throw new Error(data?.error || data?.message || `upload failed (${res.status})`)
++  }
++  const body = await res.json() as { path: string }
++  return body.path
++}
++
++function pastedImages(data: DataTransfer | null): globalThis.File[] {
++  if (!data) return []
++  // Clipboards that also carry text (e.g. spreadsheet cells, which come with a
++  // rendered image) keep pasting as text.
++  if (data.getData('text/plain').trim()) return []
++  return Array.from(data.files).filter((file) => file.type.startsWith('image/'))
++}
++
++/**
++ * Pasting a clipboard image into a terminal uploads it to the server and
++ * pastes the saved file's path, which Claude Code and Codex attach as an image.
++ * The listener runs in the capture phase so it sees the event before xterm.
++ */
++export function registerTerminalImagePaste(
++  container: HTMLElement,
++  paste: (text: string) => void,
++): { dispose: () => void } {
++  const onPaste = (event: ClipboardEvent) => {
++    const images = pastedImages(event.clipboardData)
++    if (images.length === 0) return
++    event.preventDefault()
++    event.stopImmediatePropagation()
++
++    const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..*$/, '')
++    void Promise.all(images.map((file, index) => {
++      const suffix = images.length > 1 ? `-${index + 1}` : ''
++      const ext = EXTENSIONS[file.type] ?? 'png'
++      return uploadImage(file, `paste-${stamp}${suffix}.${ext}`)
++    }))
++      .then((paths) => paste(paths.join(' ')))
++      .catch((error) => log.warn('Image paste upload failed', error))
++  }
++
++  container.addEventListener('paste', onPaste, true)
++  return {
++    dispose: () => container.removeEventListener('paste', onPaste, true),
++  }
++}
