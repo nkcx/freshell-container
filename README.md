@@ -403,6 +403,10 @@ To trigger manually, use the workflow dispatch button on GitHub.
 Freshell versions are resolved automatically from the upstream GitHub Releases
 API — stable releases go to `latest`/`lite`, prereleases go to `rc`/`lite-rc`.
 
+A new Freshell release runs without the container's [Freshell patches](#freshell-patches)
+until they are ported to it. See
+[When Freshell publishes a new release](#when-freshell-publishes-a-new-release).
+
 ## Image size
 
 The **full** image is larger than typical containers (~4GB) due to bundling five
@@ -459,6 +463,29 @@ environment:
 A patch that isn't available for the running version, or doesn't apply, is
 skipped with a warning in the container log. The image build checks that every
 patch for the Freshell version it packages still applies.
+
+### When Freshell publishes a new release
+
+The daily build picks up new Freshell releases automatically (see
+[Updating](#updating)). Patches are tied to an exact release tag, so **a new
+release runs unpatched** until a `patches/<new tag>/` directory exists. The image
+still builds, and the container still starts. The only sign is this line in the
+container log:
+
+```
+[freshell-container] WARNING: no Freshell patches exist for v0.7.6; requested patches skipped: convert-eol,image-paste
+```
+
+To carry the patches forward:
+
+1. Check out the new tag and try each patch:
+   `git apply --check patches/<old tag>/<name>.patch`. Use `git apply -3` if the
+   context has drifted, then regenerate the patch with `git diff`.
+2. Check whether the release already fixes the bug. If it does, drop the patch
+   instead of porting it.
+3. Commit the ported patches as `patches/<new tag>/` and update the Versions
+   column above. Delete a version's directory once neither `latest` nor `rc`
+   packages that release.
 
 ## Known issues
 

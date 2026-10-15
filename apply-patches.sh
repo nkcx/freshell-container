@@ -46,6 +46,12 @@ if [ -z "${SELECTED// /}" ] || [ "$SELECTED" = "none" ]; then
     exit 0
 fi
 
+if [ ! -d "$VERSION_DIR" ]; then
+    echo "[${LOG_PREFIX}] WARNING: no Freshell patches exist for ${VERSION}; requested patches skipped: ${SELECTED}"
+    echo "[${LOG_PREFIX}] WARNING: port them by adding patches/${VERSION}/ to freshell-container (see README)."
+    exit 0
+fi
+
 IFS=',' read -ra NAMES <<< "$SELECTED"
 for name in "${NAMES[@]}"; do
     name=$(echo "$name" | tr -d '[:space:]')
