@@ -454,10 +454,11 @@ Patches are kept per Freshell version (`patches/<tag>/`), because the stable
 |---|---|---|
 | `convert-eol` | v0.7.0, v0.7.5 | Antigravity CLI (`agy`) draws its logo, prompt and menus too far left ([freshell#790](https://github.com/danshapiro/freshell/issues/790)). Freshell's terminal turned every line feed into CR+LF, which real terminals don't do. |
 | `image-paste` | v0.7.5 | Pasting a clipboard image (e.g. a screenshot) into a terminal does nothing. With the patch, the image is uploaded to `~/.freshell/attachments` and its path is pasted, which Claude Code and Codex attach as an image. Clipboards that also contain text paste as text. |
+| `shared-tabs` | v0.7.5 | Each browser keeps its own set of open tabs, so a session open on one device is missing on the others. With the patch, every device shows the same tabs (the server keeps the shared layout in `~/.freshell/shared-layout.json`); the active tab and focused pane stay per device. On first sync, each device's existing tabs are merged in rather than replaced. Closing a tab closes it everywhere. Edits from two devices are merged, not overwritten. Two devices showing the same terminal resize it to whichever resized last. |
 
 ```yaml
 environment:
-  FRESHELL_PATCHES: convert-eol,image-paste   # or "all"
+  FRESHELL_PATCHES: convert-eol,image-paste,shared-tabs   # or "all"
 ```
 
 A patch that isn't available for the running version, or doesn't apply, is

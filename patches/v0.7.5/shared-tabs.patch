@@ -1,0 +1,473 @@
+diff --git a/server/shared-layout-store.ts b/server/shared-layout-store.ts
+new file mode 100644
+index 0000000..2c21f1e
+--- /dev/null
++++ b/server/shared-layout-store.ts
+@@ -0,0 +1,81 @@
++import fs from 'fs'
++import fsp from 'fs/promises'
++import path from 'path'
++import { getFreshellConfigDir } from './freshell-home.js'
++import { logger } from './logger.js'
++
++const log = logger.child({ component: 'shared-layout-store' })
++
++const SAVE_DEBOUNCE_MS = 1000
++
++export type SharedLayoutState = {
++  raw: string | null
++  revision: number
++}
++
++export type SharedLayoutPushResult =
++  | { accepted: true; revision: number }
++  | { accepted: false; state: SharedLayoutState }
++
++/**
++ * One tab layout shared by every browser connected to this server.
++ *
++ * The layout is the client's persisted layout payload, kept opaque here. Writes
++ * use optimistic concurrency: a push names the revision it was merged from and
++ * is rejected if another client got there first, so the pusher merges the newer
++ * layout and retries instead of overwriting tabs it has not seen.
++ */
++export class SharedLayoutStore {
++  private state: SharedLayoutState = { raw: null, revision: 0 }
++  private saveTimer: NodeJS.Timeout | null = null
++
++  constructor(private readonly filePath: string) {}
++
++  static open(filePath = path.join(getFreshellConfigDir(), 'shared-layout.json')): SharedLayoutStore {
++    const store = new SharedLayoutStore(filePath)
++    try {
++      const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'))
++      if (typeof parsed?.raw === 'string' && Number.isInteger(parsed?.revision) && parsed.revision > 0) {
++        store.state = { raw: parsed.raw, revision: parsed.revision }
++      }
++    } catch (error: any) {
++      if (error?.code !== 'ENOENT') {
++        log.warn({ err: error, filePath }, 'Could not read shared layout; starting empty')
++      }
++    }
++    return store
++  }
++
++  get(): SharedLayoutState {
++    return this.state
++  }
++
++  push(raw: string, baseRevision: number): SharedLayoutPushResult {
++    if (baseRevision !== this.state.revision) {
++      return { accepted: false, state: this.state }
++    }
++    this.state = { raw, revision: this.state.revision + 1 }
++    this.scheduleSave()
++    return { accepted: true, revision: this.state.revision }
++  }
++
++  private scheduleSave(): void {
++    if (this.saveTimer) return
++    this.saveTimer = setTimeout(() => {
++      this.saveTimer = null
++      void this.save()
++    }, SAVE_DEBOUNCE_MS)
++    this.saveTimer.unref?.()
++  }
++
++  private async save(): Promise<void> {
++    const tmpPath = `${this.filePath}.tmp`
++    try {
++      await fsp.mkdir(path.dirname(this.filePath), { recursive: true })
++      await fsp.writeFile(tmpPath, JSON.stringify(this.state))
++      await fsp.rename(tmpPath, this.filePath)
++    } catch (error) {
++      log.warn({ err: error, filePath: this.filePath }, 'Could not save shared layout')
++    }
++  }
++}
+diff --git a/server/ws-handler.ts b/server/ws-handler.ts
+index f65bfef..e5238cb 100644
+--- a/server/ws-handler.ts
++++ b/server/ws-handler.ts
+@@ -33,6 +33,7 @@ import { allocateLocalhostPort } from './local-port.js'
+ import { TerminalStreamBroker } from './terminal-stream/broker.js'
+ import { isTerminalStreamAttachRequestIdWithinSerializedBudget } from './terminal-stream/serialized-budget.js'
+ import { buildSidebarOpenSessionKeys, type SidebarSessionLocator } from './sidebar-session-selection.js'
++import { SharedLayoutStore } from './shared-layout-store.js'
+ import { loadSessionHistory } from './session-history-loader.js'
+ import { TabRegistryRecordBaseSchema, TabRegistryRecordSchema } from './tabs-registry/types.js'
+ import type { TabsRegistryStore } from './tabs-registry/store.js'
+@@ -459,6 +460,12 @@ const TabsSyncClientRetireSchema = z.object({
+   snapshotRevision: z.number().int().nonnegative(),
+ })
+ 
++const LayoutSharedPushSchema = z.object({
++  type: z.literal('layout.shared.push'),
++  raw: z.string().min(1),
++  baseRevision: z.number().int().nonnegative(),
++})
++
+ type ClientState = {
+   authenticated: boolean
+   supportsUiScreenshotV1: boolean
+@@ -556,6 +563,7 @@ export class WsHandler {
+   private opencodeLatestTurnCompletionsProvider?: () => TerminalTurnCompletionSnapshot[]
+   private tabsRegistryStore?: TabsRegistryStore
+   private layoutStore?: LayoutStore
++  private sharedLayoutStore = SharedLayoutStore.open()
+   private extensionManager?: ExtensionManager
+   private agentHistorySource?: ClaudeFreshAgentHistorySource
+   private freshAgentRuntimeManager?: FreshAgentRuntimeManagerLike
+@@ -819,6 +827,7 @@ export class WsHandler {
+       TabsSyncPushSchema,
+       TabsSyncQuerySchema,
+       TabsSyncClientRetireSchema,
++      LayoutSharedPushSchema,
+       dynamicCodingCliCreateSchema,
+       CodingCliInputSchema,
+       CodingCliKillSchema,
+@@ -1912,6 +1921,7 @@ export class WsHandler {
+           bootId: this.bootId,
+         })
+         this.scheduleHandshakeSnapshot(ws, state)
++        this.send(ws, { type: 'layout.shared.state', ...this.sharedLayoutStore.get() }, true)
+         return
+       }
+ 
+@@ -3146,6 +3156,21 @@ export class WsHandler {
+         return
+       }
+ 
++      case 'layout.shared.push': {
++        const result = this.sharedLayoutStore.push(m.raw, m.baseRevision)
++        if (!result.accepted) {
++          this.send(ws, { type: 'layout.shared.state', ...result.state, reply: true }, true)
++          return
++        }
++        this.send(ws, { type: 'layout.shared.ack', revision: result.revision }, true)
++        for (const other of this.connections) {
++          if (other === ws || other.readyState !== WebSocket.OPEN) continue
++          if (!this.clientStates.get(other)?.authenticated) continue
++          this.send(other, { type: 'layout.shared.state', raw: m.raw, revision: result.revision }, true)
++        }
++        return
++      }
++
+       case 'tabs.sync.client.retire': {
+         if (!this.tabsRegistryStore) {
+           this.sendError(ws, {
+diff --git a/src/App.tsx b/src/App.tsx
+index 7c5f014..5fc6872 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -41,6 +41,7 @@ import { useTurnCompletionNotifications } from '@/hooks/useTurnCompletionNotific
+ import { useDrag } from '@use-gesture/react'
+ import { installCrossTabSync } from '@/store/crossTabSync'
+ import { startTabRegistrySync } from '@/store/tabRegistrySync'
++import { startSharedLayoutSync } from '@/store/sharedLayoutSync'
+ import { resolveAndPersistDeviceMeta, setTabRegistryDeviceMeta } from '@/store/tabRegistrySlice'
+ import { buildLocalSettingsPatch } from '@/store/browserPreferencesPersistence'
+ import Sidebar, { AppView } from '@/components/Sidebar'
+@@ -477,6 +478,7 @@ export default function App() {
+     let cleanedUp = false
+     let cleanup: (() => void) | null = null
+     let stopTabRegistrySync: (() => void) | null = null
++    let stopSharedLayoutSync: (() => void) | null = null
+     let stopWsDisconnectSync: (() => void) | null = null
+     let bootstrapDataLoading = false
+     let sidebarWindowLoading = false
+@@ -504,6 +506,7 @@ export default function App() {
+         // fetches (cleanup + stopTabRegistrySync are already assigned by now).
+         cleanup?.()
+         stopTabRegistrySync?.()
++        stopSharedLayoutSync?.()
+         return true
+       }
+ 
+@@ -661,6 +664,7 @@ export default function App() {
+       // early messages.
+       const ws = getWsClient()
+       stopTabRegistrySync = startTabRegistrySync(appStore, ws)
++      stopSharedLayoutSync = startSharedLayoutSync(appStore, ws)
+ 
+       // Set up hello extension to include session IDs for prioritized repair
+       ws.setHelloExtensionProvider(() => ({
+@@ -1336,6 +1340,7 @@ export default function App() {
+       cleanedUp = true
+       cleanup?.()
+       stopTabRegistrySync?.()
++      stopSharedLayoutSync?.()
+       stopWsDisconnectSync?.()
+       void cleanupPromise
+     }
+diff --git a/src/store/crossTabSync.ts b/src/store/crossTabSync.ts
+index 99f4267..4001489 100644
+--- a/src/store/crossTabSync.ts
++++ b/src/store/crossTabSync.ts
+@@ -147,10 +147,11 @@ function protectCanonicalPaneResumeIdentity(remoteNode: unknown, localLayout: un
+   return visit(remoteNode)
+ }
+ 
+-function dispatchHydrateLayoutFromPersisted(
++export function dispatchHydrateLayoutFromPersisted(
+   store: StoreLike,
+   raw: string,
+   localLayoutPersistedAt?: number,
++  persist = false,
+ ) {
+   const parsed = parsePersistedLayoutRaw(raw)
+   if (!parsed) return
+@@ -172,7 +173,7 @@ function dispatchHydrateLayoutFromPersisted(
+       tombstones: parsed.tombstones,
+     } as any),
+     meta: {
+-      skipPersist: true,
++      skipPersist: !persist,
+       source: 'cross-tab',
+       localLayoutPersistedAt,
+       remoteLayoutPersistedAt: parsed.persistedAt,
+@@ -211,7 +212,7 @@ function dispatchHydrateLayoutFromPersisted(
+       paneTitleSetByUser: parsed.panes.paneTitleSetByUser,
+     } as any),
+     meta: {
+-      skipPersist: true,
++      skipPersist: !persist,
+       source: 'cross-tab',
+       localLayoutPersistedAt,
+       remoteLayoutPersistedAt: parsed.persistedAt,
+diff --git a/src/store/sharedLayoutSync.ts b/src/store/sharedLayoutSync.ts
+new file mode 100644
+index 0000000..22a392a
+--- /dev/null
++++ b/src/store/sharedLayoutSync.ts
+@@ -0,0 +1,230 @@
++import { dispatchHydrateLayoutFromPersisted } from './crossTabSync'
++import { onPersistBroadcast } from './persistBroadcast'
++import { removeLayout } from './panesSlice'
++import { PERSIST_DEBOUNCE_MS } from './persistMiddleware'
++import { parsePersistedLayoutRaw } from './persistedState'
++import { LAYOUT_STORAGE_KEY } from './storage-keys'
++
++/**
++ * Shares one set of open tabs across every device connected to this server.
++ *
++ * The server holds the latest persisted layout with a revision number. Each
++ * local layout write is pushed with the revision it was merged from; if another
++ * device pushed first, the server answers with its newer layout instead, which
++ * is merged here (the same merge cross-tab sync uses) and pushed again. Which
++ * tab and pane is active stays per device: hydration keeps the local choice.
++ *
++ * Tab closes travel as tombstones, but those expire after an hour, so a device
++ * that slept longer would resurrect tabs closed elsewhere. To prevent that,
++ * each browser remembers the tab ids it last shared with the server: a local
++ * tab that was shared but is gone from the server's layout was closed on
++ * another device and is dropped, while a tab the server has never seen was
++ * opened here and is kept and pushed.
++ */
++
++const KNOWN_TAB_IDS_STORAGE_KEY = 'freshell.shared-layout.known-tab-ids.v1'
++const PUSH_CHECK_DELAY_MS = PERSIST_DEBOUNCE_MS + 250
++const PLACEHOLDER_TAB_MAX_AGE_MS = 60_000
++
++type StoreLike = {
++  dispatch: (action: any) => any
++  getState: () => any
++}
++
++type SharedLayoutWsClient = {
++  send: (msg: unknown) => void
++  onMessage: (handler: (msg: any) => void) => () => void
++}
++
++function canonicalJson(value: unknown): string {
++  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
++  if (value && typeof value === 'object') {
++    const entries = Object.entries(value as Record<string, unknown>)
++      .filter(([, v]) => v !== undefined)
++      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
++    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(',')}}`
++  }
++  return JSON.stringify(value) ?? 'null'
++}
++
++// What devices share: the tabs and their pane trees. Timestamps, tombstones and
++// the active tab/pane are left out so per-device differences never trigger a push.
++function sharedFingerprint(raw: string): string | null {
++  try {
++    const parsed = JSON.parse(raw)
++    const tabs: Array<{ id?: unknown }> = parsed?.tabs?.tabs ?? []
++    const tabIds = new Set(tabs.map((tab) => tab?.id))
++    const forOpenTabs = (byTab: Record<string, unknown> | undefined) =>
++      Object.fromEntries(Object.entries(byTab ?? {}).filter(([tabId]) => tabIds.has(tabId)))
++    return canonicalJson({
++      tabs,
++      layouts: forOpenTabs(parsed?.panes?.layouts),
++      paneTitles: forOpenTabs(parsed?.panes?.paneTitles),
++      paneTitleSetByUser: forOpenTabs(parsed?.panes?.paneTitleSetByUser),
++    })
++  } catch {
++    return null
++  }
++}
++
++function tabIdsOf(raw: string | null): string[] {
++  if (!raw) return []
++  return (parsePersistedLayoutRaw(raw)?.tabs.tabs ?? []).map((tab) => tab.id)
++}
++
++function hasEverSynced(): boolean {
++  try {
++    return localStorage.getItem(KNOWN_TAB_IDS_STORAGE_KEY) !== null
++  } catch {
++    return true
++  }
++}
++
++// A browser that has never synced and holds only a fresh, unnamed tab has just
++// the placeholder the app opens for first-time users; it should not be shared.
++function isPlaceholderOnly(tabs: Array<{ createdAt?: number; titleSetByUser?: boolean }>): boolean {
++  if (tabs.length !== 1 || tabs[0].titleSetByUser) return false
++  return typeof tabs[0].createdAt === 'number' && Date.now() - tabs[0].createdAt < PLACEHOLDER_TAB_MAX_AGE_MS
++}
++
++function loadKnownTabIds(): Set<string> {
++  try {
++    const parsed = JSON.parse(localStorage.getItem(KNOWN_TAB_IDS_STORAGE_KEY) || '[]')
++    return new Set(Array.isArray(parsed) ? parsed.filter((id) => typeof id === 'string') : [])
++  } catch {
++    return new Set()
++  }
++}
++
++function saveKnownTabIds(ids: string[]): void {
++  try {
++    localStorage.setItem(KNOWN_TAB_IDS_STORAGE_KEY, JSON.stringify(ids))
++  } catch {
++    // ignore
++  }
++}
++
++function readLocalLayoutRaw(): string | null {
++  try {
++    return localStorage.getItem(LAYOUT_STORAGE_KEY)
++  } catch {
++    return null
++  }
++}
++
++export function startSharedLayoutSync(store: StoreLike, ws: SharedLayoutWsClient): () => void {
++  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return () => {}
++
++  // Nothing is pushed until this connection has received the server's layout.
++  let synced = false
++  let revision = 0
++  let serverFingerprint: string | null = null
++  let inFlight: { fingerprint: string | null; tabIds: string[] } | null = null
++  let pushCheckTimer: number | undefined
++  let replacePlaceholderTabs = !hasEverSynced()
++
++  const maybePush = () => {
++    if (!synced || inFlight) return
++    const raw = readLocalLayoutRaw()
++    if (!raw) return
++    const fingerprint = sharedFingerprint(raw)
++    if (fingerprint === serverFingerprint) return
++    inFlight = { fingerprint, tabIds: tabIdsOf(raw) }
++    ws.send({ type: 'layout.shared.push', raw, baseRevision: revision })
++  }
++
++  const schedulePushCheck = () => {
++    if (pushCheckTimer) window.clearTimeout(pushCheckTimer)
++    pushCheckTimer = window.setTimeout(() => {
++      pushCheckTimer = undefined
++      maybePush()
++    }, PUSH_CHECK_DELAY_MS)
++  }
++
++  const applyServerLayout = (raw: string | null) => {
++    const serverTabIds = tabIdsOf(raw)
++    const known = loadKnownTabIds()
++    saveKnownTabIds(serverTabIds)
++    const dropPlaceholderTabs = replacePlaceholderTabs && serverTabIds.length > 0
++    replacePlaceholderTabs = false
++    if (!raw) return
++
++    const localTabs = (store.getState()?.tabs?.tabs ?? []) as Array<{ id: string; createdAt?: number; titleSetByUser?: boolean }>
++    const localTabIds = localTabs.map((tab) => tab.id)
++    if (dropPlaceholderTabs && isPlaceholderOnly(localTabs)) {
++      for (const id of localTabIds) known.add(id)
++    }
++
++    let rawToHydrate = raw
++    const serverTabIdSet = new Set(serverTabIds)
++    const closedElsewhere = localTabIds.filter((id) => known.has(id) && !serverTabIdSet.has(id))
++    if (closedElsewhere.length > 0) {
++      try {
++        const parsed = JSON.parse(raw)
++        const now = Date.now()
++        parsed.tombstones = [
++          ...(Array.isArray(parsed.tombstones) ? parsed.tombstones : []),
++          ...closedElsewhere.map((id) => ({ id, deletedAt: now })),
++        ]
++        rawToHydrate = JSON.stringify(parsed)
++      } catch {
++        // Unparseable layouts are ignored by hydration anyway.
++      }
++    }
++
++    const localLayoutPersistedAt = parsePersistedLayoutRaw(readLocalLayoutRaw() || '')?.persistedAt
++    dispatchHydrateLayoutFromPersisted(store, rawToHydrate, localLayoutPersistedAt, true)
++
++    // Hydration keeps pane trees whose tab is gone; drop them so they are not
++    // persisted and shared.
++    const state = store.getState()
++    const openTabIds = new Set(((state?.tabs?.tabs ?? []) as Array<{ id: string }>).map((tab) => tab.id))
++    for (const tabId of Object.keys(state?.panes?.layouts ?? {})) {
++      if (!openTabIds.has(tabId)) store.dispatch(removeLayout({ tabId }))
++    }
++  }
++
++  const unsubscribeMessage = ws.onMessage((msg) => {
++    if (msg?.type === 'ready') {
++      // A new connection: the server sends its layout right after this.
++      synced = false
++      inFlight = null
++      return
++    }
++
++    if (msg?.type === 'layout.shared.ack') {
++      if (typeof msg.revision !== 'number') return
++      revision = msg.revision
++      if (inFlight) {
++        serverFingerprint = inFlight.fingerprint
++        saveKnownTabIds(inFlight.tabIds)
++        inFlight = null
++      }
++      maybePush()
++      return
++    }
++
++    if (msg?.type === 'layout.shared.state') {
++      if (typeof msg.revision !== 'number') return
++      const raw = typeof msg.raw === 'string' ? msg.raw : null
++      revision = msg.revision
++      serverFingerprint = raw ? sharedFingerprint(raw) : null
++      if (msg.reply) inFlight = null
++      synced = true
++      applyServerLayout(raw)
++      // Local tabs the server lacks may not change state on hydration, so no
++      // persist write would push them; check once the merge has been persisted.
++      schedulePushCheck()
++    }
++  })
++
++  const unsubscribePersist = onPersistBroadcast((msg) => {
++    if (msg.key === LAYOUT_STORAGE_KEY) maybePush()
++  })
++
++  return () => {
++    unsubscribeMessage()
++    unsubscribePersist()
++    if (pushCheckTimer) window.clearTimeout(pushCheckTimer)
++  }
++}
