@@ -44,7 +44,7 @@ FROM node:22-bookworm-slim AS runtime-base
 # Shells: bash (default), zsh, fish, dash (configurable via FRESHELL_SHELL env var)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential python3 python3-dev python3-venv python3-pip \
-    git openssh-client tmux ripgrep jq curl wget ca-certificates \
+    git openssh-client tmux tini ripgrep jq curl wget ca-certificates \
     bash zsh fish dash sudo \
     iputils-ping dnsutils traceroute netcat-openbsd \
     lsof htop less file tree unzip vim-tiny nano \
@@ -176,7 +176,9 @@ ENV GEMINI_CMD=agy
 # freshell state, SSH keys, git config, project repos, shell history
 VOLUME ["/home/coder"]
 
-ENTRYPOINT ["entrypoint.sh"]
+# tini as PID 1 reaps orphaned processes (daemonized tmux servers, headless
+# browsers); npm would leave them as zombies until the PID limit is hit.
+ENTRYPOINT ["/usr/bin/tini", "--", "entrypoint.sh"]
 CMD ["npm", "run", "serve"]
 
 # --- Lite variant (no providers baked in) ---
@@ -203,5 +205,7 @@ ENV GEMINI_CMD=agy
 
 VOLUME ["/home/coder"]
 
-ENTRYPOINT ["entrypoint.sh"]
+# tini as PID 1 reaps orphaned processes (daemonized tmux servers, headless
+# browsers); npm would leave them as zombies until the PID limit is hit.
+ENTRYPOINT ["/usr/bin/tini", "--", "entrypoint.sh"]
 CMD ["npm", "run", "serve"]
